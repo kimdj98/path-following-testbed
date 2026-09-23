@@ -1,0 +1,9 @@
+# Simulink / MATLAB generated files
+slprj/
+*.slxc
+*.asv
+*.autosave
+*.mexw64
+
+# Large regenerated output (run_baseline recreates it)
+results/baseline_run.mat

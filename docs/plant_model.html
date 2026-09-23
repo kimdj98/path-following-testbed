@@ -1,0 +1,1133 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Single-track 경로 오차 모델</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --bg: #F3F6F7;
+  --surface: #FFFFFF;
+  --surface2: #E9EEF1;
+  --ink: #17212B;
+  --muted: #56626E;
+  --rule: #D3DBE0;
+  --accent: #0B6B75;
+  --accent-soft: #DDEDEF;
+  --note-bg: #E6F0F1;
+  --warn-bg: #F9EEE3;
+  --warn-ink: #7A3D0B;
+  --cA: #2B5CA8;
+  --cB: #BD4712;
+  --cBd: #AD2A5B;
+  --cC: #2B7A4A;
+  --cD: #6A47AF;
+  --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1519;
+    --surface: #161E24;
+    --surface2: #1E2830;
+    --ink: #E1E7EB;
+    --muted: #97A3AD;
+    --rule: #2B363F;
+    --accent: #5CC2CB;
+    --accent-soft: #16303A;
+    --note-bg: #152A2F;
+    --warn-bg: #2E2217;
+    --warn-ink: #F0BE8C;
+    --cA: #88AEF2;
+    --cB: #F29A62;
+    --cBd: #F081AB;
+    --cC: #74CD99;
+    --cD: #B99FF2;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1519;
+  --surface: #161E24;
+  --surface2: #1E2830;
+  --ink: #E1E7EB;
+  --muted: #97A3AD;
+  --rule: #2B363F;
+  --accent: #5CC2CB;
+  --accent-soft: #16303A;
+  --note-bg: #152A2F;
+  --warn-bg: #2E2217;
+  --warn-ink: #F0BE8C;
+  --cA: #88AEF2;
+  --cB: #F29A62;
+  --cBd: #F081AB;
+  --cC: #74CD99;
+  --cD: #B99FF2;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.75;
+  padding-inline: 16px;
+  padding-block: 0 4rem;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+:not(pre) > code { background: var(--surface2); padding: 0.05em 0.35em; border-radius: 3px; }
+pre {
+  background: var(--surface2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+pre code { font-size: inherit; }
+table { font-size: inherit; }
+
+/* ---------- layout ---------- */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 47rem);
+  justify-content: center;
+  gap: 2.5rem;
+}
+@media (min-width: 1120px) {
+  .layout { grid-template-columns: 13.5rem minmax(0, 47rem); }
+  .toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 1.5rem); align-self: start; max-height: calc(100vh - 3rem); overflow-y: auto; }
+}
+header.top {
+  max-width: 47rem;
+  margin: 0 auto;
+  padding-block: 2.75rem 1.5rem;
+}
+@media (min-width: 1120px) {
+  header.top { max-width: calc(13.5rem + 2.5rem + 47rem); padding-left: calc(13.5rem + 2.5rem); }
+}
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+h1 {
+  font-size: clamp(1.75rem, 4vw, 2.3rem);
+  line-height: 1.25;
+  font-weight: 700;
+  margin: 0.4rem 0 0.9rem;
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+}
+.lede { font-size: 1.06rem; color: var(--ink); margin: 0 0 1rem; max-width: 42rem; }
+.meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; font-size: 0.86rem; color: var(--muted); margin: 0; padding: 0; list-style: none; }
+.meta b { color: var(--ink); font-weight: 500; }
+
+.toc { font-size: 0.9rem; }
+.toc h2 { font-size: 0.78rem; font-family: var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.5rem; font-weight: 500; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; }
+.toc a { display: block; color: var(--ink); text-decoration: none; padding: 0.25rem 0.5rem; border-radius: 4px; line-height: 1.45; }
+.toc a:hover { background: var(--surface2); }
+.toc .step { font-family: var(--mono); font-size: 0.78rem; color: var(--accent); margin-right: 0.35rem; }
+@media (max-width: 1119px) {
+  .toc { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 0.9rem 1rem; }
+  .toc ol { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+}
+
+main { min-width: 0; }
+section { padding-block: 1.25rem 1.5rem; border-top: 1px solid var(--rule); scroll-margin-top: 1rem; }
+section:first-child { border-top: 0; padding-top: 0; }
+h2 { font-size: 1.45rem; line-height: 1.35; font-weight: 700; margin: 0.5rem 0 0.25rem; text-wrap: balance; }
+h3 { font-size: 1.08rem; line-height: 1.45; font-weight: 600; margin: 1.75rem 0 0.4rem; text-wrap: balance; }
+.sec-head { margin-bottom: 1rem; }
+.sec-head .kicker { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); letter-spacing: 0.04em; }
+.src { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+p { margin: 0.7rem 0; }
+ul, ol.plain { padding-left: 1.3rem; margin: 0.6rem 0; }
+li { margin: 0.25rem 0; }
+
+/* ---------- math ---------- */
+.eq { margin: 0.9rem 0; overflow-x: auto; overflow-y: hidden; }
+mjx-container[jax="SVG"][display="true"] { overflow-x: auto; overflow-y: hidden; max-width: 100%; margin: 0.9rem 0 !important; padding-block: 2px; }
+mjx-container[jax="SVG"] > svg { overflow: visible; }
+.mA { fill: var(--cA); stroke: var(--cA); color: var(--cA); }
+.mB { fill: var(--cB); stroke: var(--cB); color: var(--cB); }
+.mBd { fill: var(--cBd); stroke: var(--cBd); color: var(--cBd); }
+.mC { fill: var(--cC); stroke: var(--cC); color: var(--cC); }
+.mD { fill: var(--cD); stroke: var(--cD); color: var(--cD); }
+.tA, .tB, .tBd, .tC, .tD { font-weight: 600; font-family: var(--mono); }
+.tA { color: var(--cA); } .tB { color: var(--cB); } .tBd { color: var(--cBd); } .tC { color: var(--cC); } .tD { color: var(--cD); }
+
+/* ---------- tables ---------- */
+.tbl { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.tbl table { border-collapse: collapse; width: 100%; font-size: 0.9rem; line-height: 1.55; }
+.tbl th, .tbl td { text-align: left; vertical-align: top; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--rule); }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl th { background: var(--surface2); font-weight: 600; font-size: 0.82rem; white-space: nowrap; }
+.tbl td.num, .tbl th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl td.sym { white-space: nowrap; }
+
+/* ---------- callouts ---------- */
+.callout { border-radius: 6px; padding: 0.8rem 1rem; margin: 1rem 0; background: var(--note-bg); font-size: 0.95rem; }
+.callout > :first-child { margin-top: 0; }
+.callout > :last-child { margin-bottom: 0; }
+.callout .tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  margin-right: 0.5rem;
+  color: var(--accent);
+  vertical-align: 1px;
+}
+.callout.warn { background: var(--warn-bg); }
+.callout.warn .tag { color: var(--warn-ink); }
+
+/* ---------- figures ---------- */
+figure { margin: 1.5rem 0; }
+figure .frame { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 0.75rem; overflow-x: auto; }
+figure svg.dg { display: block; width: 100%; height: auto; max-width: 100%; min-width: 30rem; color: var(--ink); }
+figcaption { font-size: 0.87rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.6; }
+.dg text { font-family: var(--sans); font-size: 13px; fill: currentColor; }
+.dg .sm { font-size: 11.5px; fill: var(--muted); }
+.dg .bt { font-weight: 600; }
+.dg .bs { font-size: 12px; fill: var(--muted); }
+.dg .box { fill: var(--surface2); stroke: currentColor; stroke-width: 1.3; }
+.dg .region { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.3; stroke-dasharray: 6 4; }
+.dg .rlabel { fill: var(--accent); font-size: 12.5px; font-weight: 500; }
+.dg .wire { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.dg .ahf { fill: currentColor; }
+.dg .ahv { fill: var(--accent); }
+.dg .axis { stroke: var(--muted); stroke-width: 1; fill: none; }
+.dg .body { stroke: currentColor; stroke-width: 4; stroke-linecap: round; }
+.dg .wheel { fill: var(--ink); }
+.dg .dash { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+.dg .dot { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 2 3; fill: none; }
+.dg .vel { stroke: var(--accent); stroke-width: 2; fill: none; }
+.dg .vt { fill: var(--accent); font-weight: 600; }
+.dg .force { stroke: var(--cB); stroke-width: 2; fill: none; }
+.dg .ft { fill: var(--cB); font-weight: 600; }
+.dg .ahB { fill: var(--cB); }
+.dg .arc { stroke: currentColor; stroke-width: 1.2; fill: none; }
+.dg .pathc { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+.dg .car { fill: var(--surface2); stroke: currentColor; stroke-width: 1.4; }
+.dg .ink { fill: currentColor; }
+.dg .chA { fill: var(--cA); font-weight: 700; font-family: var(--mono); }
+.dg .chB { fill: var(--cB); font-weight: 700; font-family: var(--mono); }
+.dg .chBd { fill: var(--cBd); font-weight: 700; font-family: var(--mono); }
+.dg .chC { fill: var(--cC); font-weight: 700; font-family: var(--mono); }
+.dg .sb { font-size: 9.5px; }
+
+/* ---------- calculator ---------- */
+.calc { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+.calc .inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.75rem 1rem; }
+.calc label { display: grid; gap: 0.2rem; font-size: 0.82rem; color: var(--muted); }
+.calc label span b { color: var(--ink); font-weight: 600; }
+.calc input[type="number"] {
+  font: 500 0.95rem var(--mono);
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.calc .vx { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem; gap: 0.75rem; align-items: end; }
+.calc input[type="range"] { width: 100%; accent-color: var(--accent); }
+.calc .bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
+.calc button {
+  font: 500 0.85rem var(--sans);
+  color: var(--ink);
+  background: var(--surface2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+.calc button:hover { border-color: var(--accent); }
+.chip { display: inline-block; font-size: 0.78rem; font-weight: 600; padding: 0.1rem 0.55rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.chip.bad { background: var(--warn-bg); color: var(--warn-ink); }
+.calc .out { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin-top: 1rem; }
+.calc .mat { font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem 0.75rem; overflow-x: auto; white-space: pre; margin: 0.25rem 0 0; line-height: 1.55; }
+.calc .mat-h { font-size: 0.82rem; font-weight: 600; }
+.calc dl { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.9rem; margin: 0.25rem 0 0; font-size: 0.88rem; }
+.calc dt { color: var(--muted); }
+.calc dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+footer { max-width: 47rem; margin: 2rem auto 0; font-size: 0.84rem; color: var(--muted); }
+@media (min-width: 1120px) { footer { max-width: calc(13.5rem + 2.5rem + 47rem); padding-left: calc(13.5rem + 2.5rem); } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<header class="top">
+  <div class="eyebrow">Control_system_project_example / docs / plant model</div>
+  <h1>Single-track 경로 오차 모델</h1>
+  <p class="lede">이 프로젝트의 plant는 Vehicle Body 3DOF 차량 블록과 경로 오차 계산 블록입니다. 이 문서는 plant를
+    설계용 선형 모델 \(\dot x = \mA x + \mB\delta + \mBd\dot\psi_{des},\ y = \mC x + \mD\delta\)로 바꾸는 과정을 단계별로 유도하고,
+    각 행렬과 원소가 무엇을 뜻하는지 정리합니다.</p>
+  <ul class="meta">
+    <li><b>수치</b> baseline 파라미터, V<sub>x</sub> = 20 m/s (MATLAB R2026a로 확인)</li>
+    <li><b>코드</b> <code>src/error_model_linear.m</code></li>
+    <li><b>요약본</b> <a href="baseline_reference.md">baseline_reference.md</a></li>
+    <li><b>수식 표시</b> MathJax (CDN, 인터넷 연결 필요)</li>
+  </ul>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <h2>목차</h2>
+  <ol>
+    <li><a href="#summary">한눈에 보기</a></li>
+    <li><a href="#notation">표기와 부호 규약</a></li>
+    <li><a href="#abcd">A, B, B<sub>d</sub>, C, D는 무엇인가</a></li>
+    <li><a href="#step1"><span class="step">1</span>강체 평면 운동</a></li>
+    <li><a href="#step2"><span class="step">2</span>타이어 힘과 slip angle</a></li>
+    <li><a href="#step3"><span class="step">3</span>[V<sub>y</sub>, r] 모델과 δ→r 전달함수</a></li>
+    <li><a href="#step4"><span class="step">4</span>경로 오차 좌표로 변환</a></li>
+    <li><a href="#step5"><span class="step">5</span>최종 오차 모델 A, B, B<sub>d</sub></a></li>
+    <li><a href="#output">출력식 C와 D</a></li>
+    <li><a href="#disturbance">곡률 외란 B<sub>d</sub>와 정상상태</a></li>
+    <li><a href="#path">경로 기하와 오차 계산 블록</a></li>
+    <li><a href="#plant">실제 plant와 설계 모델의 차이</a></li>
+    <li><a href="#code">수식과 코드 대응</a></li>
+    <li><a href="#calc">V<sub>x</sub>·stiffness 바꿔 보기</a></li>
+  </ol>
+</nav>
+
+<main>
+<!-- ================================================================== -->
+<section id="summary">
+  <div class="sec-head">
+    <h2>한눈에 보기</h2>
+    <div class="src">최종 결과 먼저 · 유도는 Step 1–5</div>
+  </div>
+
+  <p>상태는 경로에 대한 위치 오차와 방향 오차, 그리고 각각의 변화율입니다. 입력은 앞바퀴 조향각이고, 경로 곡률은 외란으로 들어옵니다.</p>
+  \[ \dot x = \mA\,x + \mB\,\delta + \mBd\,\dot\psi_{des}, \qquad y = \mC\,x + \mD\,\delta \]
+  \[ x = \begin{bmatrix} e_y \\ \dot e_y \\ e_\psi \\ \dot e_\psi \end{bmatrix}, \qquad
+     u = \delta\ [\mathrm{rad}], \qquad d = \dot\psi_{des} = V_x\,\kappa\ [\mathrm{rad/s}] \]
+  <p>baseline 파라미터(<span class="mono">l<sub>f</sub>=1.4, l<sub>r</sub>=1.6, m=1600, I<sub>z</sub>=2000, C<sub>f</sub>=C<sub>r</sub>=50000, V<sub>x</sub>=20</span>)를 넣은 값:</p>
+  \[ \mA = \class{mA}{\begin{bmatrix} 0 & 1 & 0 & 0 \\ 0 & -3.125 & 62.5 & 0.3125 \\ 0 & 0 & 0 & 1 \\ 0 & 0.25 & -5 & -5.65 \end{bmatrix}},\quad
+     \mB = \class{mB}{\begin{bmatrix} 0 \\ 31.25 \\ 0 \\ 35 \end{bmatrix}},\quad
+     \mBd = \class{mBd}{\begin{bmatrix} 0 \\ -19.6875 \\ 0 \\ -5.65 \end{bmatrix}} \]
+  \[ \mC = \class{mC}{\begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 1 & 0 \end{bmatrix}}\ \ (\text{Ext 1: } e_y,\ e_\psi \text{ only}),\qquad
+     \mD = \class{mD}{\begin{bmatrix} 0 \\ 0 \end{bmatrix}} \]
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>행렬</th><th>크기</th><th>정의</th><th>이 모델에서 하는 일</th></tr></thead>
+      <tbody>
+        <tr><td class="sym"><span class="tA">A</span></td><td class="num">4×4</td><td>입력이 없을 때 상태가 스스로 변하는 규칙. \(A_{ij} = \partial \dot x_i / \partial x_j\)</td><td>1·3행은 적분(위치·각도 ← 속도·각속도), 2·4행은 타이어가 만드는 복원력과 감쇠. 고유값 {0, 0, −4.39 ± 1.82i}</td></tr>
+        <tr><td class="sym"><span class="tB">B</span></td><td class="num">4×1</td><td>조향 δ가 각 상태의 변화율을 즉시 바꾸는 크기. \(B_i = \partial \dot x_i / \partial \delta\)</td><td>앞 타이어 횡력 C<sub>f</sub>δ가 횡가속도(C<sub>f</sub>/m)와 yaw 각가속도(C<sub>f</sub>l<sub>f</sub>/I<sub>z</sub>)를 만듦</td></tr>
+        <tr><td class="sym"><span class="tBd">B<sub>d</sub></span></td><td class="num">4×1</td><td>우리가 조작할 수 없는 입력(외란)이 들어오는 통로. <i>E</i>로 쓰기도 함</td><td>경로가 휘면(\(\dot\psi_{des}\) ≠ 0) 오차가 쌓임. B와 방향이 달라서 조향만으로 네 식을 모두 상쇄할 수 없음</td></tr>
+        <tr><td class="sym"><span class="tC">C</span></td><td class="num">p×4</td><td>상태 중 무엇을 측정(출력)하는지. \(C_{ij} = \partial y_i / \partial x_j\)</td><td>Ext 1: 차선 센서는 e<sub>y</sub>, e<sub>ψ</sub>만 측정. Ext 2([β, r] 모델): r만 측정</td></tr>
+        <tr><td class="sym"><span class="tD">D</span></td><td class="num">p×1</td><td>입력이 적분을 거치지 않고 출력에 바로 나타나는 부분</td><td>0. 조향은 가속도를 바꾸고, 위치·각도·각속도는 적분을 거쳐서야 변함</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <div class="frame">
+    <svg class="dg" viewBox="0 0 840 290" role="img" aria-label="Simulink 루프에서 설계 모델이 대신하는 부분: Vehicle Body 3DOF, Global Coordinate, Path Tracking Errors 세 블록을 합친 δ와 ψ̇_des에서 x까지의 경로. 조향은 B로, 경로 곡률은 B_d로 들어가고, C가 x에서 출력을 고른다.">
+      <defs>
+        <marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahf"/></marker>
+      </defs>
+      <rect x="232" y="50" width="600" height="156" rx="6" class="region"/>
+      <text x="248" y="196" class="rlabel">설계 모델 A, B, B<tspan class="sb" dy="3">d</tspan><tspan dy="-3">가 대신하는 부분: 조향과 곡률 → 오차 상태 x</tspan></text>
+
+      <rect x="20" y="110" width="150" height="64" rx="4" class="box"/>
+      <text x="95" y="137" text-anchor="middle" class="bt">State Feedback</text>
+      <text x="95" y="158" text-anchor="middle" class="bs">δ = −K x</text>
+
+      <rect x="252" y="110" width="160" height="64" rx="4" class="box"/>
+      <text x="332" y="137" text-anchor="middle" class="bt">Vehicle Body 3DOF</text>
+      <text x="332" y="158" text-anchor="middle" class="bs">타이어 힘 → 횡·yaw 가속도</text>
+
+      <rect x="472" y="110" width="140" height="64" rx="4" class="box"/>
+      <text x="542" y="137" text-anchor="middle" class="bt">Global Coordinate</text>
+      <text x="542" y="158" text-anchor="middle" class="bs">속도 회전 → X, Y 적분</text>
+
+      <rect x="672" y="110" width="146" height="64" rx="4" class="box"/>
+      <text x="745" y="137" text-anchor="middle" class="bt">Path Tracking</text>
+      <text x="745" y="158" text-anchor="middle" class="bt">Errors</text>
+
+      <line x1="170" y1="142" x2="250" y2="142" class="wire" marker-end="url(#ah1)"/>
+      <text x="200" y="133" text-anchor="middle">δ</text>
+      <text x="226" y="162" text-anchor="end" class="chB">B</text>
+
+      <line x1="412" y1="142" x2="470" y2="142" class="wire" marker-end="url(#ah1)"/>
+      <text x="441" y="133" text-anchor="middle">V<tspan class="sb" dy="3">y</tspan><tspan dy="-3">, ψ</tspan></text>
+
+      <line x1="612" y1="142" x2="670" y2="142" class="wire" marker-end="url(#ah1)"/>
+      <text x="641" y="133" text-anchor="middle">X, Y</text>
+
+      <path d="M332,110 V78 H720 V108" class="wire" marker-end="url(#ah1)"/>
+      <text x="526" y="70" text-anchor="middle">V<tspan class="sb" dy="3">x</tspan><tspan dy="-3">, V</tspan><tspan class="sb" dy="3">y</tspan><tspan dy="-3">, r</tspan></text>
+
+      <text x="792" y="22" text-anchor="middle" class="bt">경로 Y(X)</text>
+      <line x1="792" y1="30" x2="792" y2="108" class="wire" marker-end="url(#ah1)"/>
+      <text x="784" y="66" text-anchor="end">곡률 κ</text>
+      <text x="800" y="45" class="chBd">B<tspan class="sb" dy="3">d</tspan></text>
+
+      <path d="M745,174 V246 H95 V176" class="wire" marker-end="url(#ah1)"/>
+      <text x="420" y="268" text-anchor="middle">x: e<tspan class="sb" dy="3">y</tspan><tspan dy="-3">, e</tspan><tspan class="sb" dy="3">ψ</tspan><tspan dy="-3">와 두 변화율</tspan></text>
+      <text x="757" y="228" class="chC">C</text>
+    </svg>
+    </div>
+    <figcaption>설계 모델이 대신하는 범위. 조향은 <span class="tB">B</span>로, 경로 곡률은 <span class="tBd">B<sub>d</sub></span>로 들어오고, 제어기나 observer가 보는 신호는 <span class="tC">C</span>가 x에서 고릅니다. 실제 시뮬레이션에서는 점선 안의 세 블록이 비선형 식을 그대로 풀고, 설계 모델은 이 세 블록을 합친 δ → x 관계를 선형으로 근사한 것입니다.</figcaption>
+  </figure>
+</section>
+
+<!-- ================================================================== -->
+<section id="notation">
+  <div class="sec-head">
+    <h2>표기와 부호 규약</h2>
+    <div class="src">기호 ↔ 코드</div>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>의미</th><th>다른 표기</th><th>이 문서</th><th>코드</th></tr></thead>
+      <tbody>
+        <tr><td>경로에서 CG까지 횡거리</td><td>\(e_1\)</td><td>\(e_y\)</td><td><code>ey</code></td></tr>
+        <tr><td>헤딩 오차 ψ − ψ<sub>des</sub></td><td>\(e_2\)</td><td>\(e_\psi\)</td><td><code>epsi</code></td></tr>
+        <tr><td>yaw rate</td><td>\(\dot\psi,\ r,\ \gamma,\ \Omega_z\)</td><td>\(r\ (\omega_z)\)</td><td><code>r</code></td></tr>
+        <tr><td>body 좌표 횡속도</td><td>\(\dot y,\ V_y,\ v_y\)</td><td>\(V_y\)</td><td><code>Vy</code></td></tr>
+        <tr><td>경로가 요구하는 yaw rate</td><td>\(\dot\psi_d = V_x/R\)</td><td>\(\dot\psi_{des} = V_x\kappa\)</td><td><code>psi_dot_des</code></td></tr>
+        <tr><td>곡률 외란 행렬</td><td>\(E\)</td><td>\(B_d\)</td><td><code>Bd</code></td></tr>
+        <tr><td>축당 cornering stiffness</td><td>\(2C_{\alpha f},\ 2C_{\alpha r}\)</td><td>\(C_f,\ C_r\)</td><td><code>veh.Cf</code>, <code>veh.Cr</code></td></tr>
+        <tr><td>yaw 관성 모멘트</td><td>\(I_z\)</td><td>\(I_{zz}\)</td><td><code>veh.Izz</code></td></tr>
+        <tr><td>앞바퀴 조향각</td><td>\(\delta,\ \delta_f\)</td><td>\(\delta_f\), WhlAngF</td><td><code>delta</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p><span class="tag">factor 2</span>타이어 한 개의 stiffness \(C_\alpha\)로 쓰는 표기에서는 좌우 두 개를 합친 축 stiffness가 \(2C_\alpha\)가 됩니다. 이 저장소는 C<sub>f</sub> = C<sub>r</sub> = 50 000 N/rad를 <b>축당</b> 값으로 쓰므로(<code>load_params.m</code>), \(2C_{\alpha f}\)로 쓰인 식에서는 그 자리에 \(C_f\)를 넣으면 됩니다. 타이어당 값으로 해석하면 A, B, B<sub>d</sub>의 stiffness 항이 모두 두 배가 됩니다.</p>
+  </div>
+
+  <h3>파라미터</h3>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>기호</th><th>뜻</th><th class="num">값</th></tr></thead>
+      <tbody>
+        <tr><td>\(l_f,\ l_r\)</td><td>CG → 앞축, 뒤축 거리</td><td class="num">1.4 m, 1.6 m</td></tr>
+        <tr><td>\(L = l_f + l_r\)</td><td>wheelbase</td><td class="num">3.0 m</td></tr>
+        <tr><td>\(m\)</td><td>질량</td><td class="num">1600 kg</td></tr>
+        <tr><td>\(I_z\)</td><td>yaw 관성 모멘트</td><td class="num">2000 kg·m²</td></tr>
+        <tr><td>\(C_f,\ C_r\)</td><td>앞·뒤 축 cornering stiffness</td><td class="num">50 000 N/rad</td></tr>
+        <tr><td>\(V_x\)</td><td>종방향 속도 (일정)</td><td class="num">20 m/s</td></tr>
+        <tr><td>\(\delta_{max}\)</td><td>조향각 포화</td><td class="num">30°</td></tr>
+        <tr><td>\(F_{zf},\ F_{zr}\)</td><td>정적 축하중 \(mg\,l_r/L,\ mg\,l_f/L\)</td><td class="num">8371 N, 7325 N</td></tr>
+        <tr><td>\(i_z = \sqrt{I_z/m}\)</td><td>yaw 관성 반경</td><td class="num">1.12 m</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>부호 규약</h3>
+  <ul>
+    <li>body 좌표: x는 차량 앞, y는 왼쪽, z는 위. global X-Y도 오른손 좌표계.</li>
+    <li>ψ와 r은 반시계(왼쪽으로 도는) 방향이 +. δ &gt; 0이면 왼쪽으로 조향하고 r &gt; 0이 됩니다.</li>
+    <li>e<sub>y</sub> &gt; 0이면 CG가 경로 왼쪽. e<sub>ψ</sub> = ψ − ψ<sub>p</sub> &gt; 0이면 차량이 경로 접선보다 왼쪽을 향합니다.</li>
+    <li>κ &gt; 0이면 경로가 왼쪽으로 휩니다. 따라서 \(\dot\psi_{des} = V_x\kappa\) &gt; 0.</li>
+    <li>slip angle α &gt; 0이면 횡력 F<sub>y</sub> &gt; 0 (+y 방향). 타이어 모델에 따라 부호를 다르게 쓰므로(\(+C_y\tan\alpha\) 또는 \(-C_y\tan\alpha\)) 이 문서는 이 규약 하나로 통일합니다.</li>
+  </ul>
+</section>
+
+<!-- ================================================================== -->
+<section id="abcd">
+  <div class="sec-head">
+    <h2>A, B, B<sub>d</sub>, C, D는 무엇인가</h2>
+  </div>
+
+  <p>상태공간 모델은 "지금 상태 x와 지금 입력을 알면 바로 다음 순간을 예측할 수 있다"는 형태의 모델입니다. 비선형 식 \(\dot x = f(x, u, d)\), \(y = h(x, u)\)를 동작점(여기서는 경로 위를 똑바로 달리는 상태, x = 0, δ = 0, \(\dot\psi_{des}\) = 0)에서 1차 근사하면 네 행렬이 Jacobian으로 나옵니다.</p>
+  \[ \mA = \left.\frac{\partial f}{\partial x}\right|_0,\quad \mB = \left.\frac{\partial f}{\partial u}\right|_0,\quad \mBd = \left.\frac{\partial f}{\partial d}\right|_0,\quad \mC = \left.\frac{\partial h}{\partial x}\right|_0,\quad \mD = \left.\frac{\partial h}{\partial u}\right|_0 \]
+
+  <ul>
+    <li><b>상태 x</b>는 시스템의 기억입니다. 이 모델에서는 에너지를 저장하는 양(횡속도, yaw 각속도에 해당하는 \(\dot e_y\), \(\dot e_\psi\))과 그 적분(e<sub>y</sub>, e<sub>ψ</sub>) 네 개입니다.</li>
+    <li><span class="tA">A</span>의 <b>j열</b>은 "상태 j가 어디에 영향을 주는가", <b>i행</b>은 "상태 i의 변화율이 무엇으로 정해지는가"입니다. 입력이 없을 때의 자연 거동을 정하고, 고유값이 곧 극점입니다.</li>
+    <li><span class="tB">B</span>는 조향을 1 rad 줬을 때 각 상태의 변화율이 <i>그 순간</i> 얼마나 바뀌는지입니다. 0인 원소는 "조향이 그 상태를 직접 바꾸지 못하고 다른 상태를 거쳐서만 바꾼다"는 뜻입니다.</li>
+    <li><span class="tBd">B<sub>d</sub></span>는 B와 모양이 같지만 설계자가 고를 수 없는 입력(경로 곡률)의 통로라서 따로 둡니다. \(E\)로 쓰기도 합니다.</li>
+    <li><span class="tC">C</span>는 센서가 상태를 어떻게 보는지입니다. 같은 plant라도 무엇을 측정하느냐에 따라 C가 달라집니다.</li>
+    <li><span class="tD">D</span>는 입력이 적분 없이 출력에 바로 나타나는 부분입니다. 위치나 각도를 측정하면 0이고, 가속도를 측정하면 0이 아닙니다(<a href="#output">출력식</a> 참고).</li>
+  </ul>
+  <p>전달함수는 네 행렬로 바로 계산합니다.</p>
+  \[ G(s) = \frac{Y(s)}{U(s)} = \mC\,(sI - \mA)^{-1}\mB + \mD \]
+</section>
+
+<!-- ================================================================== -->
+<section id="step1">
+  <div class="sec-head">
+    <div class="kicker">Step 1</div>
+    <h2>강체 평면 운동</h2>
+  </div>
+
+  <p>타이어 힘과 센서는 차체에 붙어 있으므로 운동방정식을 body 좌표(x-y-z)에서 씁니다. body 좌표는 차와 함께 회전하므로 Newton–Euler 식에 \(\Omega\times\) 항이 붙습니다.</p>
+  \[ \mathbf F = \left.\frac{\partial \mathbf p}{\partial t}\right|_{xyz} + \boldsymbol\Omega\times\mathbf p,\qquad
+     \mathbf T = \left.\frac{\partial \mathbf h}{\partial t}\right|_{xyz} + \boldsymbol\Omega\times\mathbf h,\qquad \mathbf p = m\mathbf V,\ \ \mathbf h = I\boldsymbol\Omega \]
+  \[ \begin{aligned}
+     F_x &= m\dot V_x + m\Omega_y V_z - m\Omega_z V_y \\
+     F_y &= m\dot V_y + m\Omega_z V_x - m\Omega_x V_z \\
+     T_z &= I_z\dot\Omega_z + I_y\Omega_x\Omega_y - I_x\Omega_y\Omega_x
+  \end{aligned} \]
+
+  <div class="callout">
+    <p><span class="tag">가정</span>평면 운동: heave, roll, pitch를 무시합니다. \(V_z = 0,\ \Omega_x = \Omega_y = 0\)이고 yaw rate를 \(r \equiv \Omega_z\)로 씁니다.</p>
+  </div>
+  \[ m(\dot V_x - rV_y) = F_x,\qquad m(\dot V_y + rV_x) = F_y,\qquad I_z\dot r = M_z \]
+  <p>\(\dot V_y + rV_x\)가 실제 횡가속도 \(a_y\)입니다. \(rV_x\)는 회전하는 좌표계에서 보기 때문에 생기는 구심 가속도 항입니다. \(m(\ddot y + \dot\psi V_x)\)로 쓰는 표기에서 \(\ddot y\)는 body 좌표 횡속도의 변화율 \(\dot V_y\)이지, global Y의 가속도가 아닙니다.</p>
+
+  <div class="callout">
+    <p><span class="tag">가정</span>종방향 속도가 일정합니다(V<sub>x</sub> = 20 m/s). 첫 식은 버리고 \(V_x\)는 밖에서 정해지는 파라미터로 둡니다. Simulink 블록도 <i>External longitudinal velocity</i> 모드로 \(V_x\)를 입력(<code>xdotin</code>)으로 받습니다. 이 가정 덕분에 모델이 시불변(LTI)이 됩니다.</p>
+  </div>
+</section>
+
+<!-- ================================================================== -->
+<section id="step2">
+  <div class="sec-head">
+    <div class="kicker">Step 2</div>
+    <h2>타이어 힘과 slip angle</h2>
+  </div>
+
+  <p><b>Single-track 근사.</b> 좌우 바퀴를 가운데 한 바퀴로 합칩니다(bicycle model). 네 바퀴의 힘 합에서 좌우 간격 \(l_s \to 0\), 좌우 조향각이 같다고(\(\delta_{fl} = \delta_{fr} = \delta\)) 두고, 속도가 일정하므로 종방향 타이어 힘 \(F_x\)를 무시하면 다음이 됩니다.</p>
+  \[ F_y = F_{yf}\cos\delta + F_{yr},\qquad M_z = l_f F_{yf}\cos\delta - l_r F_{yr} \]
+
+  <p><b>축 위치의 속도.</b> 강체 위 한 점의 속도는 \(\mathbf v_P = \mathbf v_{CG} + \boldsymbol\Omega\times\mathbf r_P\)입니다. 앞축은 \(\mathbf r = (l_f, 0)\), 뒤축은 \((-l_r, 0)\)이므로</p>
+  \[ \mathbf v_f = \begin{bmatrix} V_x \\ V_y + l_f r \end{bmatrix},\qquad
+     \mathbf v_r = \begin{bmatrix} V_x \\ V_y - l_r r \end{bmatrix},\qquad
+     \theta_{Vf} = \tan^{-1}\frac{V_y + l_f r}{V_x},\quad \theta_{Vr} = \tan^{-1}\frac{V_y - l_r r}{V_x} \]
+  <p><b>Slip angle</b>은 바퀴가 향하는 방향과 바퀴 중심 속도 방향의 차이입니다. 뒷바퀴는 조향하지 않습니다.</p>
+  \[ \alpha_f = \delta - \theta_{Vf},\qquad \alpha_r = 0 - \theta_{Vr} \]
+
+  <figure>
+    <div class="frame">
+    <svg class="dg" viewBox="60 64 610 222" role="img" aria-label="Single-track 모델. 앞축 속도 v_f는 성분 V_x와 V_y + l_f r로 이루어지고, 바퀴 방향(조향각 δ)과 v_f 사이의 각이 앞 slip angle α_f이다. 뒤축 속도 v_r과 차체 축 사이의 각이 α_r이다. 횡력 F_yf는 앞바퀴에 수직, F_yr은 뒷바퀴에 수직이다.">
+      <defs>
+        <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahf"/></marker>
+        <marker id="ah2v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahv"/></marker>
+        <marker id="ah2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahB"/></marker>
+      </defs>
+      <!-- axes -->
+      <line x1="100" y1="180" x2="630" y2="180" class="axis" marker-end="url(#ah2)"/>
+      <text x="636" y="184" class="sm">x</text>
+      <line x1="300" y1="180" x2="300" y2="92" class="axis" marker-end="url(#ah2)"/>
+      <text x="306" y="96" class="sm">y</text>
+      <!-- body and wheels -->
+      <line x1="140" y1="180" x2="440" y2="180" class="body"/>
+      <rect x="112" y="173" width="56" height="14" rx="3" class="wheel"/>
+      <rect x="412" y="173" width="56" height="14" rx="3" class="wheel" transform="rotate(-34 440 180)"/>
+      <circle cx="300" cy="180" r="5" class="ink"/>
+      <text x="312" y="198" class="sm">CG</text>
+      <!-- yaw rate -->
+      <path d="M324.4,171.1 A26,26 0 0,0 275.6,171.1" class="arc" marker-end="url(#ah2)"/>
+      <text x="322" y="152">r</text>
+      <!-- front: wheel heading, velocity, components, angles -->
+      <line x1="440" y1="180" x2="564.4" y2="96.1" class="dash"/>
+      <text x="568" y="93" class="sm">바퀴 방향</text>
+      <line x1="440" y1="180" x2="584.2" y2="138.7" class="vel" marker-end="url(#ah2v)"/>
+      <text x="590" y="137" class="vt">v<tspan class="sb" dy="3">f</tspan></text>
+      <line x1="584.2" y1="180" x2="584.2" y2="140" class="dot"/>
+      <text x="590" y="166" class="sm">V<tspan class="sb" dy="3">y</tspan><tspan dy="-3"> + l</tspan><tspan class="sb" dy="3">f</tspan><tspan dy="-3">r</tspan></text>
+      <text x="548" y="197" class="sm">V<tspan class="sb" dy="3">x</tspan></text>
+      <path d="M500,180 A60,60 0 0,0 489.7,146.4" class="arc"/>
+      <text x="506" y="177">δ</text>
+      <path d="M550.5,148.3 A115,115 0 0,0 535.3,115.7" class="arc"/>
+      <text x="558" y="129">α<tspan class="sb" dy="3">f</tspan></text>
+      <!-- rear -->
+      <line x1="140" y1="180" x2="229.1" y2="192.5" class="vel" marker-end="url(#ah2v)"/>
+      <text x="196" y="208" text-anchor="end" class="vt">v<tspan class="sb" dy="3">r</tspan></text>
+      <line x1="229.1" y1="180" x2="229.1" y2="191" class="dot"/>
+      <text x="236" y="210" class="sm">V<tspan class="sb" dy="3">y</tspan><tspan dy="-3"> − l</tspan><tspan class="sb" dy="3">r</tspan><tspan dy="-3">r</tspan></text>
+      <path d="M209.3,189.7 A70,70 0 0,0 210,180" class="arc"/>
+      <text x="214" y="175">α<tspan class="sb" dy="3">r</tspan></text>
+      <!-- forces -->
+      <line x1="440" y1="180" x2="400.9" y2="122" class="force" marker-end="url(#ah2b)"/>
+      <text x="394" y="118" text-anchor="end" class="ft">F<tspan class="sb" dy="3">yf</tspan></text>
+      <line x1="140" y1="180" x2="140" y2="118" class="force" marker-end="url(#ah2b)"/>
+      <text x="148" y="122" class="ft">F<tspan class="sb" dy="3">yr</tspan></text>
+      <!-- dimensions -->
+      <line x1="140" y1="255" x2="440" y2="255" class="axis"/>
+      <line x1="140" y1="249" x2="140" y2="261" class="axis"/>
+      <line x1="300" y1="249" x2="300" y2="261" class="axis"/>
+      <line x1="440" y1="249" x2="440" y2="261" class="axis"/>
+      <text x="220" y="275" text-anchor="middle">l<tspan class="sb" dy="3">r</tspan></text>
+      <text x="370" y="275" text-anchor="middle">l<tspan class="sb" dy="3">f</tspan></text>
+    </svg>
+    </div>
+    <figcaption>앞축 속도 v<sub>f</sub>는 V<sub>x</sub>와 V<sub>y</sub> + l<sub>f</sub>r로 이루어집니다. 바퀴는 δ만큼 돌아가 있으므로 두 방향의 차이가 α<sub>f</sub> = δ − θ<sub>Vf</sub>입니다. 뒤축은 V<sub>y</sub> − l<sub>r</sub>r &lt; 0이면 속도가 아래로 기울어 α<sub>r</sub> &gt; 0이 되고, 횡력 F<sub>yr</sub>이 +y로 생깁니다. 횡력은 각 바퀴 면에 수직입니다. 그림은 보기 쉽게 각도를 과장했습니다.</figcaption>
+  </figure>
+
+  <p><b>선형 타이어.</b> slip angle이 작으면 횡력은 slip angle에 비례합니다. 축당 stiffness로 쓰면</p>
+  \[ F_{yf} = C_f\,\alpha_f,\qquad F_{yr} = C_r\,\alpha_r \]
+  <p>각도가 작다고 보고 \(\tan^{-1}z \approx z\), \(\cos\delta \approx 1\)을 쓰면</p>
+  \[ F_{yf} \approx C_f\left(\delta - \frac{V_y + l_f r}{V_x}\right),\qquad
+     F_{yr} \approx C_r\left(-\,\frac{V_y - l_r r}{V_x}\right) \]
+
+  <div class="callout">
+    <p><span class="tag">선형 영역</span>Dugoff 타이어 모델에서 \(H &lt; 1/2\), 즉 타이어 합력이 \(\mu F_z/2\)보다 작으면 힘이 마찰계수와 무관한 선형 영역입니다. 순수 횡력이라면 \(|\alpha| &lt; \mu F_z / (2C)\)입니다. μ = 0.9를 가정하고 정적 하중을 쓰면 앞축 4.3°, 뒤축 3.8°입니다. baseline의 최대 조향은 1.7°, 급한 차선변경 경로의 준정상 조향은 약 0.84°라서 선형 가정 안쪽입니다.</p>
+  </div>
+
+  <ul>
+    <li><b>타이어 지연(relaxation).</b> 실제 타이어 힘은 1차 지연 \(\tau\dot F_d + F_d = F_s\), \(\tau = L_{relax}/V_x\)로 생깁니다. Simulink 블록 기본값 0.1 m면 20 m/s에서 5 ms입니다. 루프 대역(몇 rad/s)보다 훨씬 빨라서 설계 모델에서는 무시합니다.</li>
+    <li><b>Magic Formula를 쓸 때.</b> 원점 기울기 \(BCD\)가 cornering stiffness입니다. MF는 slip angle을 도 단위로 쓰는 경우가 많으므로 N/deg를 N/rad로 바꿔야 합니다.</li>
+  </ul>
+</section>
+
+<!-- ================================================================== -->
+<section id="step3">
+  <div class="sec-head">
+    <div class="kicker">Step 3</div>
+    <h2>[V<sub>y</sub>, r] 모델과 δ→r 전달함수</h2>
+  </div>
+
+  <p>Step 2의 힘을 Step 1의 식에 넣습니다.</p>
+  \[ \begin{aligned}
+     m(\dot V_y + rV_x) &= C_f\left(\delta - \frac{V_y + l_f r}{V_x}\right) + C_r\left(-\frac{V_y - l_r r}{V_x}\right) \\
+     I_z\dot r &= l_f C_f\left(\delta - \frac{V_y + l_f r}{V_x}\right) - l_r C_r\left(-\frac{V_y - l_r r}{V_x}\right)
+  \end{aligned} \]
+  <p>\(V_y\), \(r\), \(\delta\)별로 모읍니다. 첫 식의 \(-V_x\)는 좌변의 \(rV_x\)를 오른쪽으로 옮긴 것입니다.</p>
+  \[ \begin{aligned}
+     \dot V_y &= -\frac{C_f + C_r}{mV_x}\,V_y + \left(\frac{-C_f l_f + C_r l_r}{mV_x} - V_x\right) r + \frac{C_f}{m}\,\delta \\
+     \dot r &= \frac{-C_f l_f + C_r l_r}{I_z V_x}\,V_y - \frac{C_f l_f^2 + C_r l_r^2}{I_z V_x}\,r + \frac{C_f l_f}{I_z}\,\delta
+  \end{aligned} \]
+  \[ \frac{d}{dt}\begin{bmatrix} V_y \\ r \end{bmatrix} =
+     \underbrace{\begin{bmatrix} -\dfrac{C_f + C_r}{mV_x} & \dfrac{-C_f l_f + C_r l_r}{mV_x} - V_x \\[2mm] \dfrac{-C_f l_f + C_r l_r}{I_z V_x} & -\dfrac{C_f l_f^2 + C_r l_r^2}{I_z V_x} \end{bmatrix}}_{A_v}
+     \begin{bmatrix} V_y \\ r \end{bmatrix} +
+     \underbrace{\begin{bmatrix} \dfrac{C_f}{m} \\[2mm] \dfrac{C_f l_f}{I_z} \end{bmatrix}}_{B_v}\delta \]
+  \[ A_v = \begin{bmatrix} -3.125 & -19.6875 \\ 0.25 & -5.65 \end{bmatrix},\qquad B_v = \begin{bmatrix} 31.25 \\ 35 \end{bmatrix} \]
+  <p>특성방정식은 \(s^2 + 8.775\,s + 22.578 = 0\)이고 고유값은 \(-4.39 \pm 1.82i\) (ω<sub>n</sub> = 4.75 rad/s, ζ = 0.923)입니다. 4상태 모델 \([y,\ \dot y,\ \psi,\ \dot\psi]\)은 여기에 \(y\)와 \(\psi\)를 적분 상태로 붙인 것이라 동특성은 같습니다.</p>
+
+  <h3>Sideslip 형태 [β, r]</h3>
+  <p>\(\beta = V_y/V_x\)로 바꾸면 Ext 2에서 쓰는 형태가 됩니다. 상태를 상수배한 것이라 고유값은 같습니다.</p>
+  \[ \frac{d}{dt}\begin{bmatrix} \beta \\ r \end{bmatrix} =
+     \underbrace{\begin{bmatrix} -\dfrac{C_f + C_r}{mV_x} & \dfrac{-C_f l_f + C_r l_r}{mV_x^2} - 1 \\[2mm] \dfrac{-C_f l_f + C_r l_r}{I_z} & -\dfrac{C_f l_f^2 + C_r l_r^2}{I_z V_x} \end{bmatrix}}_{A_\beta}
+     \begin{bmatrix} \beta \\ r \end{bmatrix} +
+     \underbrace{\begin{bmatrix} \dfrac{C_f}{mV_x} \\[2mm] \dfrac{C_f l_f}{I_z} \end{bmatrix}}_{B_\beta}\delta \]
+  \[ A_\beta = \begin{bmatrix} -3.125 & -0.984 \\ 5 & -5.65 \end{bmatrix},\qquad B_\beta = \begin{bmatrix} 1.5625 \\ 35 \end{bmatrix} \]
+
+  <h3>δ → r 전달함수 (Ext 2)</h3>
+  <p>출력이 yaw rate이면 \(\mC = [0\ \ 1]\), \(\mD = 0\)입니다. 원소를 \(A_\beta = [a_{ij}]\), \(B_\beta = [b_1;\ b_2]\)로 쓰면 \((sI - A)^{-1} = \operatorname{adj}(sI - A)/\det(sI - A)\)이고 adj의 둘째 행은 \([a_{21},\ s - a_{11}]\)입니다.</p>
+  \[ G_{\delta\to r}(s) = \mC(sI - A_\beta)^{-1}B_\beta = \frac{b_2\,s + (a_{21}b_1 - a_{11}b_2)}{s^2 - (a_{11} + a_{22})\,s + (a_{11}a_{22} - a_{12}a_{21})} \]
+  <p>계수를 정리할 때 두 곳에서 항이 상쇄됩니다.</p>
+  \[ a_{21}b_1 - a_{11}b_2 = \frac{C_f}{mI_zV_x}\Big[(C_r l_r - C_f l_f) + (C_f + C_r)\,l_f\Big] = \frac{C_f C_r L}{m I_z V_x} \]
+  \[ a_{11}a_{22} - a_{12}a_{21} = \frac{N}{m I_z V_x^2} + \frac{C_r l_r - C_f l_f}{I_z},\qquad N = (C_f + C_r)(C_f l_f^2 + C_r l_r^2) - (C_r l_r - C_f l_f)^2 \]
+  <p>N을 전개하면 \(C_f^2 l_f^2\)와 \(C_r^2 l_r^2\)가 지워지고 교차항만 남습니다.</p>
+  \[ N = C_fC_r\,(l_f^2 + 2l_fl_r + l_r^2) = C_fC_r L^2 \]
+  <p>표준 2차 형태로 쓰면</p>
+  \[ T_{\delta_f\to\omega_z}(s) = K_s\,\frac{s + T_z^{-1}}{s^2 + 2\zeta\omega_n s + \omega_n^2} \]
+  \[ \boxed{\begin{aligned}
+     K_s &= \frac{C_f l_f}{I_z}, & T_z &= \frac{m V_x l_f}{C_r L}, \\[1mm]
+     \omega_n^2 &= \frac{C_f C_r L^2}{m I_z V_x^2} + \frac{C_r l_r - C_f l_f}{I_z}, & 2\zeta\omega_n &= \frac{C_f + C_r}{mV_x} + \frac{C_f l_f^2 + C_r l_r^2}{I_z V_x}
+  \end{aligned}} \]
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>파라미터</th><th>식</th><th class="num">값 (V<sub>x</sub> = 20 m/s)</th></tr></thead>
+      <tbody>
+        <tr><td>K<sub>s</sub> (high-frequency gain)</td><td>\(C_f l_f / I_z\)</td><td class="num">35 s⁻²</td></tr>
+        <tr><td>T<sub>z</sub> (zero 시정수)</td><td>\(mV_x l_f / (C_r L)\)</td><td class="num">0.2987 s (T<sub>z</sub>⁻¹ = 3.348)</td></tr>
+        <tr><td>ω<sub>n</sub></td><td>\(\sqrt{\omega_n^2}\)</td><td class="num">4.752 rad/s</td></tr>
+        <tr><td>ζ</td><td>\((2\zeta\omega_n)/(2\omega_n)\)</td><td class="num">0.9234</td></tr>
+        <tr><td>정상상태 이득 G(0)</td><td>\(K_s T_z^{-1}/\omega_n^2 = V_x / (L + K_v V_x^2)\)</td><td class="num">5.190 s⁻¹</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>MATLAB으로 확인한 결과는 <code>tf(ss(Ab, Bb, [0 1], 0))</code> = (35 s + 117.19) / (s² + 8.775 s + 22.578)입니다.</p>
+  <ul>
+    <li><b>K<sub>s</sub>가 high-frequency gain인 이유.</b> s → ∞에서 \(G \approx K_s/s\)입니다. \(K_s = \mC B_\beta\)는 조향을 넣는 순간 생기는 yaw 각가속도라서, 적분 한 번 뒤의 r에서는 1/s로 보입니다.</li>
+    <li><b>Understeer gradient.</b> \(K_v = \dfrac{m}{L}\left(\dfrac{l_r}{C_f} - \dfrac{l_f}{C_r}\right) = 2.133\times10^{-3}\) rad/(m/s²) (≈ 1.2°/g) &gt; 0이므로 understeer 차량입니다.</li>
+    <li>\(K_v &gt; 0 \Leftrightarrow C_r l_r &gt; C_f l_f\)이므로 \(\omega_n^2 = \dfrac{C_fC_rL^2}{mI_zV_x^2}\left(1 + \dfrac{K_v V_x^2}{L}\right) &gt; 0\)이 모든 속도에서 성립합니다. oversteer(K<sub>v</sub> &lt; 0)면 \(V_x &gt; \sqrt{-L/K_v}\)에서 ω<sub>n</sub>² &lt; 0이 되어 불안정해집니다.</li>
+  </ul>
+
+  <h3>식별용 매개변수화 (Ext 2, plant 쪽만)</h3>
+  <p>식별기에서는 plant를 계수 네 개의 형태로 씁니다. 대응 관계는 다음과 같습니다.</p>
+  \[ \frac{r(s)}{\delta(s)} = \frac{\alpha_2 s + \alpha_1}{s^2 + \beta_2 s + \beta_1},\qquad
+     \alpha_2 = K_s,\quad \alpha_1 = \frac{K_s}{T_z},\quad \beta_2 = 2\zeta\omega_n,\quad \beta_1 = \omega_n^2 \]
+  <p>참값은 α<sub>2</sub> = 35, α<sub>1</sub> = 117.19, β<sub>2</sub> = 8.775, β<sub>1</sub> = 22.578입니다. 미지수가 네 개이므로 조향 입력은 적어도 서로 다른 주파수 두 개를 포함해야 합니다(persistent excitation). 식별기가 보는 plant는 비선형 Simulink 블록이므로 추정값이 위 참값과 조금 다를 수 있습니다. 차이가 나는 원인은 relaxation 지연과 <code>'raw'</code> 블록 설정 등입니다(<a href="#plant">아래</a> 참고).</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="step4">
+  <div class="sec-head">
+    <div class="kicker">Step 4</div>
+    <h2>경로 오차 좌표로 변환</h2>
+  </div>
+
+  <p>경로 추종에서는 차량의 절대 위치보다 경로에 대한 상대 오차가 중요합니다. 경로 위 최근접점 P에서 경로 접선 방향이 ψ<sub>p</sub> (= ψ<sub>des</sub>)입니다.</p>
+
+  <figure>
+    <div class="frame">
+    <svg class="dg" viewBox="0 0 600 300" role="img" aria-label="경로 오차의 정의. e_y는 경로 위 최근접점 P에서 법선 방향으로 CG까지 잰 거리이고, e_psi는 차량 헤딩 psi와 경로 접선 방향 psi_p 사이의 각이다.">
+      <defs>
+        <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahf"/></marker>
+      </defs>
+      <line x1="30" y1="285" x2="110" y2="285" class="axis" marker-end="url(#ah3)"/>
+      <text x="116" y="289" class="sm">X</text>
+      <line x1="30" y1="285" x2="30" y2="215" class="axis" marker-end="url(#ah3)"/>
+      <text x="30" y="208" text-anchor="middle" class="sm">Y</text>
+
+      <path d="M40,250 C200,250 380,170 560,110" class="pathc"/>
+      <text x="478" y="172" class="vt">경로 (곡률 κ)</text>
+
+      <!-- psi_p at P -->
+      <line x1="292.5" y1="202.5" x2="372" y2="202.5" class="dot"/>
+      <path d="M342.5,202.5 A50,50 0 0,0 340.2,187.5" class="arc"/>
+      <text x="356" y="199" class="sm">ψ<tspan class="sb" dy="3">p</tspan></text>
+
+      <!-- vehicle -->
+      <rect x="-45" y="-18" width="90" height="36" rx="8" class="car" transform="translate(271.5 135.7) rotate(-29.45)"/>
+      <line x1="271.5" y1="135.7" x2="402.1" y2="62" class="dash"/>
+      <text x="406" y="64">ψ</text>
+      <line x1="271.5" y1="135.7" x2="414.6" y2="90.7" class="dot"/>
+      <text x="419" y="94" class="sm">경로 접선 방향</text>
+      <path d="M362.1,107.2 A95,95 0 0,0 354.2,89" class="arc"/>
+      <text x="367" y="95" style="font-size:12px">e<tspan class="sb" dy="3">ψ</tspan></text>
+
+      <!-- e_y -->
+      <line x1="271.5" y1="135.7" x2="292.5" y2="202.5" stroke="currentColor" stroke-width="2"/>
+      <polyline points="300.1,200.1 297.7,192.5 290.1,194.9" class="arc"/>
+      <text x="296" y="172">e<tspan class="sb" dy="3">y</tspan></text>
+      <circle cx="271.5" cy="135.7" r="4" class="ink"/>
+      <text x="244" y="118" text-anchor="end" class="sm">CG</text>
+      <circle cx="292.5" cy="202.5" r="4" class="ink"/>
+      <text x="300" y="226" class="sm">P: 최근접점 (X<tspan class="sb" dy="3">p</tspan><tspan dy="-3">, Y</tspan><tspan class="sb" dy="3">p</tspan><tspan dy="-3">)</tspan></text>
+    </svg>
+    </div>
+    <figcaption>e<sub>y</sub>는 최근접점 P에서 경로 법선 방향으로 CG까지 잰 거리이고(왼쪽 +), e<sub>ψ</sub>는 차량 헤딩 ψ와 경로 접선 방향 ψ<sub>p</sub> 사이의 각입니다. 차가 경로를 따라 움직이면 ψ<sub>p</sub>는 \(\dot\psi_{des} = \kappa\dot s\)의 속도로 돌아갑니다.</figcaption>
+  </figure>
+
+  <p><b>정의.</b></p>
+  \[ e_\psi = \psi - \psi_{des},\qquad \dot\psi_{des} = \kappa\,\dot s \approx V_x\kappa = \frac{V_x}{R} \]
+  <p><b>Kinematics (Serret–Frenet).</b> 경로 법선 방향 속도가 곧 \(\dot e_y\)입니다. \(e_\psi\)가 작으면 선형화할 수 있습니다.</p>
+  \[ \dot e_y = V_y\cos e_\psi + V_x\sin e_\psi \;\approx\; V_y + V_x e_\psi \]
+  <p>\(V_x\)가 일정하므로 한 번 더 미분하면</p>
+  \[ \ddot e_y = \dot V_y + V_x\dot e_\psi,\qquad \dot e_\psi = r - \dot\psi_{des},\qquad \ddot e_\psi = \dot r - \ddot\psi_{des} \approx \dot r \]
+  <div class="callout">
+    <p><span class="tag">가정</span>\(\ddot\psi_{des} \approx 0\): 곡률과 속도가 일정하거나 천천히 변한다고 봅니다. S자 경로에서는 κ가 계속 변하므로 이것이 이 모델의 근사 중 하나입니다.</p>
+  </div>
+
+  <p><b>상태 치환.</b> 위 관계를 거꾸로 쓰면 Step 3의 상태를 오차로 표현할 수 있습니다.</p>
+  \[ V_y = \dot e_y - V_x e_\psi,\qquad r = \dot e_\psi + \dot\psi_{des} \]
+  <p><b>횡방향 식.</b> Step 3의 \(\dot V_y\) 식에 넣고 \(V_x\dot e_\psi\)를 더합니다.</p>
+  \[ \ddot e_y = \underbrace{-\frac{C_f + C_r}{mV_x}(\dot e_y - V_x e_\psi) + \left(\frac{-C_f l_f + C_r l_r}{mV_x} - V_x\right)(\dot e_\psi + \dot\psi_{des}) + \frac{C_f}{m}\delta}_{\dot V_y} \;+\; V_x\dot e_\psi \]
+  <p>괄호를 풀면 \(\dot e_\psi\) 앞의 \(-V_x\)와 끝의 \(+V_x\dot e_\psi\)가 상쇄됩니다.</p>
+  \[ \ddot e_y = -\frac{C_f + C_r}{mV_x}\dot e_y + \frac{C_f + C_r}{m}e_\psi + \frac{-C_f l_f + C_r l_r}{mV_x}\dot e_\psi \underbrace{-\,V_x\dot e_\psi + V_x\dot e_\psi}_{=\,0} + \frac{C_f}{m}\delta + \left(\frac{-C_f l_f + C_r l_r}{mV_x} - V_x\right)\dot\psi_{des} \]
+  <p>하지만 \(\dot\psi_{des}\) 앞의 \(-V_x\)는 남습니다. 곡선을 따라가려면 경로를 따라 도는 만큼의 구심 가속도 \(V_x\dot\psi_{des} = V_x^2/R\)가 필요하고(desired lateral acceleration), 조향이 이를 만들지 않으면 그만큼 경로 바깥으로 밀려나기 때문입니다.</p>
+
+  <p><b>Yaw 식.</b> Step 3의 \(\dot r\) 식에 같은 치환을 합니다.</p>
+  \[ \ddot e_\psi = \underbrace{\frac{-C_f l_f + C_r l_r}{I_z V_x}(\dot e_y - V_x e_\psi) - \frac{C_f l_f^2 + C_r l_r^2}{I_z V_x}(\dot e_\psi + \dot\psi_{des}) + \frac{C_f l_f}{I_z}\delta}_{\dot r} \]
+  \[ \ddot e_\psi = -\frac{C_f l_f - C_r l_r}{I_z V_x}\dot e_y + \frac{C_f l_f - C_r l_r}{I_z}e_\psi - \frac{C_f l_f^2 + C_r l_r^2}{I_z V_x}\dot e_\psi + \frac{C_f l_f}{I_z}\delta - \frac{C_f l_f^2 + C_r l_r^2}{I_z V_x}\dot\psi_{des} \]
+  <p>두 식 어디에도 \(e_y\) 자체는 나오지 않습니다. 타이어 힘은 경로에 대한 상대 속도와 각도로만 정해지고 경로가 어디 있는지는 모르기 때문입니다. 그래서 A의 첫 열이 0이 됩니다.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="step5">
+  <div class="sec-head">
+    <div class="kicker">Step 5</div>
+    <h2>최종 오차 모델 A, B, B<sub>d</sub></h2>
+    <div class="src"><code>error_model_linear.m</code></div>
+  </div>
+
+  <p>Step 4의 두 식에 \(\frac{d}{dt}e_y = \dot e_y\), \(\frac{d}{dt}e_\psi = \dot e_\psi\) 두 줄을 더해 행렬로 씁니다.</p>
+  \[ \frac{d}{dt}\begin{bmatrix} e_y \\ \dot e_y \\ e_\psi \\ \dot e_\psi \end{bmatrix} =
+     \mA\begin{bmatrix} e_y \\ \dot e_y \\ e_\psi \\ \dot e_\psi \end{bmatrix} + \mB\,\delta + \mBd\,\dot\psi_{des} \]
+  \[ \mA = \class{mA}{\begin{bmatrix}
+       0 & 1 & 0 & 0 \\
+       0 & -\dfrac{C_f + C_r}{mV_x} & \dfrac{C_f + C_r}{m} & \dfrac{-C_f l_f + C_r l_r}{mV_x} \\[2mm]
+       0 & 0 & 0 & 1 \\
+       0 & -\dfrac{C_f l_f - C_r l_r}{I_z V_x} & \dfrac{C_f l_f - C_r l_r}{I_z} & -\dfrac{C_f l_f^2 + C_r l_r^2}{I_z V_x}
+     \end{bmatrix}} \]
+  \[ \mB = \class{mB}{\begin{bmatrix} 0 \\ \dfrac{C_f}{m} \\[2mm] 0 \\ \dfrac{C_f l_f}{I_z} \end{bmatrix}},\qquad
+     \mBd = \class{mBd}{\begin{bmatrix} 0 \\ \dfrac{-C_f l_f + C_r l_r}{mV_x} - V_x \\[2mm] 0 \\ -\dfrac{C_f l_f^2 + C_r l_r^2}{I_z V_x} \end{bmatrix}} \]
+  <p>타이어당 stiffness로 쓰려면 \(C_f \to 2C_{\alpha f}\), \(C_r \to 2C_{\alpha r}\)로 바꾸면 됩니다. 수치는 <a href="#summary">한눈에 보기</a>에 있습니다.</p>
+
+  <h3>원소별 의미</h3>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>원소</th><th>식</th><th class="num">값</th><th>물리적 의미</th></tr></thead>
+      <tbody>
+        <tr><td class="sym"><span class="tA">A</span><sub>12</sub>, <span class="tA">A</span><sub>34</sub></td><td>1</td><td class="num">1</td><td>정의상의 적분: e<sub>y</sub>의 변화율이 \(\dot e_y\), e<sub>ψ</sub>의 변화율이 \(\dot e_\psi\)</td></tr>
+        <tr><td class="sym"><span class="tA">A</span><sub>·1</sub></td><td>0</td><td class="num">0</td><td>e<sub>y</sub> 자체는 어떤 힘도 만들지 않음. 경로에서 떨어져 있어도 스스로 돌아올 복원력이 없음</td></tr>
+        <tr><td class="sym"><span class="tA">A</span><sub>22</sub></td><td>\(-\frac{C_f + C_r}{mV_x}\)</td><td class="num">−3.125</td><td>옆으로 미끄러지면(\(\dot e_y\)) 앞뒤 타이어가 모두 반대 힘을 냄 → 횡방향 감쇠. V<sub>x</sub>가 클수록 약해짐</td></tr>
+        <tr><td class="sym"><span class="tA">A</span><sub>23</sub></td><td>\(\frac{C_f + C_r}{m}\)</td><td class="num">62.5</td><td>같은 \(\dot e_y\)라도 차가 틀어져 있으면(e<sub>ψ</sub>) body 횡속도 V<sub>y</sub> = \(\dot e_y\) − V<sub>x</sub>e<sub>ψ</sub>가 달라지고, 그만큼 slip angle과 횡력이 생김</td></tr>
+        <tr><td class="sym"><span class="tA">A</span><sub>24</sub></td><td>\(\frac{-C_f l_f + C_r l_r}{mV_x}\)</td><td class="num">0.3125</td><td>회전하면 앞뒤 slip angle이 반대로 생김. 두 힘이 거의 상쇄되어(C<sub>r</sub>l<sub>r</sub> ≈ C<sub>f</sub>l<sub>f</sub>) 작음</td></tr>
+        <tr><td class="sym"><span class="tA">A</span><sub>42</sub></td><td>\(-\frac{C_f l_f - C_r l_r}{I_z V_x}\)</td><td class="num">0.25</td><td>옆미끄러짐이 만드는 yaw 모멘트. C<sub>r</sub>l<sub>r</sub> &gt; C<sub>f</sub>l<sub>f</sub>라 뒤 타이어 모멘트가 이김 → 미끄러지는 방향으로 차를 돌려 세움(understeer)</td></tr>
+        <tr><td class="sym"><span class="tA">A</span><sub>43</sub></td><td>\(\frac{C_f l_f - C_r l_r}{I_z}\)</td><td class="num">−5</td><td>헤딩 오차가 만드는 yaw 복원 모멘트(바람개비처럼 진행 방향으로 돌아옴)</td></tr>
+        <tr><td class="sym"><span class="tA">A</span><sub>44</sub></td><td>\(-\frac{C_f l_f^2 + C_r l_r^2}{I_z V_x}\)</td><td class="num">−5.65</td><td>yaw 감쇠: 회전하면 앞뒤 slip angle이 회전을 막는 방향으로 생김</td></tr>
+        <tr><td class="sym"><span class="tB">B</span><sub>2</sub></td><td>\(\frac{C_f}{m}\)</td><td class="num">31.25</td><td>조향 1 rad → 앞 타이어 힘 C<sub>f</sub> → 횡가속도</td></tr>
+        <tr><td class="sym"><span class="tB">B</span><sub>4</sub></td><td>\(\frac{C_f l_f}{I_z}\)</td><td class="num">35</td><td>같은 힘이 모멘트 팔 l<sub>f</sub>로 만드는 yaw 각가속도</td></tr>
+        <tr><td class="sym"><span class="tB">B</span><sub>1</sub>, <span class="tB">B</span><sub>3</sub></td><td>0</td><td class="num">0</td><td>조향은 위치·각도를 바로 바꾸지 못하고 가속도를 거쳐서만 바꿈</td></tr>
+        <tr><td class="sym"><span class="tBd">B<sub>d</sub></span><sub>2</sub></td><td>\(\frac{-C_f l_f + C_r l_r}{mV_x} - V_x\)</td><td class="num">−19.69</td><td>경로가 왼쪽으로 휘면 오차가 오른쪽(−)으로 쌓임. 주성분 −V<sub>x</sub>는 필요한 구심 가속도 V<sub>x</sub>\(\dot\psi_{des}\)</td></tr>
+        <tr><td class="sym"><span class="tBd">B<sub>d</sub></span><sub>4</sub></td><td>\(-\frac{C_f l_f^2 + C_r l_r^2}{I_z V_x}\)</td><td class="num">−5.65</td><td>= A<sub>44</sub>. 경로를 따라 도는 yaw rate에도 yaw 감쇠 모멘트가 걸림</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>B<sub>d</sub>의 구조: r = \(\dot e_\psi\) + \(\dot\psi_{des}\)이므로 \(\dot\psi_{des}\)는 동역학 행(2, 4행)에서 \(\dot e_\psi\)와 같은 계수로 들어갑니다(A<sub>24</sub>, A<sub>44</sub>). 2행에는 적분 관계의 \(V_x\dot e_\psi\)가 상쇄되지 않은 −V<sub>x</sub>가 더해집니다.</p>
+
+  <h3>고유값</h3>
+  \[ \det(sI - \mA) = s^2\Big[s^2 - (A_{22} + A_{44})\,s + (A_{22}A_{44} - A_{24}A_{42} - A_{43})\Big] = s^2\,(s^2 + 8.775\,s + 22.578) \]
+  <p>\(A_{22}A_{43} - A_{23}A_{42} = 0\)이 파라미터와 관계없이 항상 성립해서 s² 인수가 나옵니다. 고유값은 {0, 0, −4.3875 ± 1.8243i}입니다.</p>
+  <ul>
+    <li><b>두 개의 0</b>: e<sub>y</sub>와 e<sub>ψ</sub>는 속도의 적분이고 위치·방향에 대한 복원력이 없습니다. 개루프는 한계안정(marginally stable)이라 feedback이 있어야 경로로 돌아옵니다.</li>
+    <li><b>복소수 쌍</b>: Step 3의 [V<sub>y</sub>, r] 모드와 같습니다. 차량 자체의 yaw/횡 동특성입니다.</li>
+  </ul>
+
+  <h3>가제어성</h3>
+  \[ \mathcal C = \begin{bmatrix} \mB & \mA\mB & \mA^2\mB & \mA^3\mB \end{bmatrix},\qquad \operatorname{rank}\mathcal C = 4 \]
+  <p>(A, B)는 가제어이므로 δ = −Kx로 A − BK의 고유값을 원하는 곳에 둘 수 있습니다. MATLAB <code>rank(ctrb(A,B))</code> = 4.</p>
+
+  <h3>속도 의존성</h3>
+  <p>V<sub>x</sub>는 1/V<sub>x</sub> 꼴로만 A에 들어가므로 A는 1/V<sub>x</sub>에 대해 affine입니다. B는 V<sub>x</sub>와 무관하고, B<sub>d</sub>는 −V<sub>x</sub>와 1/V<sub>x</sub> 항을 모두 가집니다. V<sub>x</sub>가 일정할 때만 LTI이고, 속도가 변하면 LTV가 되어 gain scheduling이나 polytopic 설계가 필요합니다.</p>
+  \[ \mA(V_x) = A_0 + \frac{1}{V_x}A_1 \]
+  \[ A_0 =\begin{bmatrix} 0&1&0&0 \\ 0&0&\frac{C_f + C_r}{m}&0 \\ 0&0&0&1 \\ 0&0&\frac{C_f l_f - C_r l_r}{I_z}&0 \end{bmatrix},\qquad
+     A_1 =\begin{bmatrix} 0&0&0&0 \\ 0&-\frac{C_f + C_r}{m}&0&\frac{-C_f l_f + C_r l_r}{m} \\ 0&0&0&0 \\ 0&-\frac{C_f l_f - C_r l_r}{I_z}&0&-\frac{C_f l_f^2 + C_r l_r^2}{I_z} \end{bmatrix} \]
+
+  <h3>δ → e<sub>y</sub> 전달함수</h3>
+  \[ \frac{e_y(s)}{\delta(s)} = \frac{\dfrac{C_f}{m}s^2 + \dfrac{C_fC_r l_r L}{mI_zV_x}s + \dfrac{C_fC_r L}{mI_z}}{s^2\,(s^2 + 2\zeta\omega_n s + \omega_n^2)}
+     = \frac{31.25\,s^2 + 187.5\,s + 2343.75}{s^2\,(s^2 + 8.775\,s + 22.578)} \]
+  <p>분모의 s²가 위의 이중 적분이고, 분자·분모 차수 차이(relative degree)는 2입니다.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="output">
+  <div class="sec-head">
+    <h2>출력식 C와 D</h2>
+  </div>
+
+  <p>A, B, B<sub>d</sub>는 차량이 어떻게 움직이는지를 정하고, C, D는 그중 무엇을 보는지를 정합니다. 같은 plant라도 무엇을 측정하느냐에 따라 C가 다릅니다.</p>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>상황</th><th>상태</th><th>출력 y</th><th><span class="tC">C</span></th><th><span class="tD">D</span></th></tr></thead>
+      <tbody>
+        <tr><td>Baseline (full-state feedback)</td><td>오차 4상태</td><td>x 전체 (Path Tracking Errors 블록이 계산)</td><td>\(I_4\)</td><td>0</td></tr>
+        <tr><td>Ext 1 (차선 센서)</td><td>오차 4상태</td><td>\(e_y,\ e_\psi\)</td><td>\(\begin{bmatrix}1&0&0&0\\0&0&1&0\end{bmatrix}\)</td><td>\(\begin{bmatrix}0\\0\end{bmatrix}\)</td></tr>
+        <tr><td>Ext 2 (yaw rate 측정)</td><td>[β, r]</td><td>\(r\)</td><td>\([0\ \ 1]\)</td><td>0</td></tr>
+        <tr><td>sideslip 측정</td><td>[β, r]</td><td>\(\beta\)</td><td>\([1\ \ 0]\)</td><td>0</td></tr>
+        <tr><td>IMU 횡가속도 (비교용)</td><td>[V<sub>y</sub>, r]</td><td>\(a_y\)</td><td>\(\left[-\frac{C_f + C_r}{mV_x}\ \ \ \frac{-C_f l_f + C_r l_r}{mV_x}\right]\)</td><td>\(\frac{C_f}{m}\) = 31.25</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ext 1: 가관측성과 observer 구조</h3>
+  \[ \mathcal O = \begin{bmatrix} \mC \\ \mC\mA \\ \mC\mA^2 \\ \mC\mA^3 \end{bmatrix},\qquad
+     \mC\mA = \begin{bmatrix} 0&1&0&0 \\ 0&0&0&1 \end{bmatrix} \]
+  <p>C와 CA 네 행만으로 이미 \(I_4\)가 되므로 rank 𝒪 = 4입니다(MATLAB <code>rank(obsv(A,C))</code> = 4). \(\dot e_y\), \(\dot e_\psi\)는 측정되는 신호의 미분이라 관측할 수 있다는 뜻입니다. Observer는 plant 모델(A, B, C)을 그대로 복사하고 측정 오차로 보정합니다.</p>
+  \[ \dot{\hat x} = \mA\hat x + \mB\delta + L\,(y - \mC\hat x) \]
+  <p>추정 오차 \(\tilde x = x - \hat x\)의 동특성은 실제 plant의 외란 항까지 넣으면 다음과 같습니다.</p>
+  \[ \dot{\tilde x} = (\mA - L\mC)\,\tilde x + \mBd\,\dot\psi_{des} \]
+  <p>observer에 \(\mBd\dot\psi_{des}\)를 넣지 않으면 곡선 구간에서 이 항이 추정 오차를 만듭니다. \(\dot\psi_{des}\)는 Path Tracking Errors의 <code>path_info</code> 5번째 원소로 나옵니다. 폐루프 고유값은 eig(A − BK) ∪ eig(A − LC)로 분리됩니다(separation principle).</p>
+
+  <h3>D = 0인 이유: relative degree</h3>
+  <p>Relative degree는 입력이 나타날 때까지 출력을 몇 번 미분해야 하는지이고, 처음으로 0이 아닌 \(CA^{k-1}B\)의 k입니다. D ≠ 0이면 relative degree는 0입니다.</p>
+  <ul>
+    <li><b>y = r</b>: \(CB = C_f l_f / I_z = 35 \ne 0\) → relative degree 1. 이 값이 바로 K<sub>s</sub>입니다.</li>
+    <li><b>y = e<sub>y</sub></b>: \(CB = 0\), \(CAB = 31.25 \ne 0\) → relative degree 2 (δ → e<sub>y</sub> 전달함수의 차수 차이와 같음).</li>
+    <li><b>y = a<sub>y</sub></b>: \(a_y = \dot V_y + rV_x\)에 Step 3의 \(\dot V_y\)를 넣으면 \(\frac{C_f}{m}\delta\)가 그대로 남아 D ≠ 0입니다. 능동 서스펜션처럼 출력에 가속도가 들어가는 시스템도 같은 이유로 D ≠ 0입니다. 위치·각도·속도 출력은 D = 0, 가속도 출력은 D ≠ 0입니다. 코드의 <code>vehicle_body_3dof.m</code>은 <code>info(5)</code>로 a<sub>y</sub>를 돌려줍니다.</li>
+  </ul>
+
+  <h3>MATLAB에서</h3>
+<pre><code>[veh, pth] = load_params();
+[A, B, Bd, C, D] = error_model_linear(veh);
+sys  = ss(A, B, C, D);                       % 입력 δ → 출력 [e_y; e_psi]
+sysd = ss(A, [B Bd], C, [D zeros(2,1)]);     % 입력 [δ; psi_dot_des]
+rank(ctrb(A, B))                             % 4
+rank(obsv(A, C))                             % 4
+tzero(ss(A, B, [1 0 0 0], 0))                % δ → e_y 의 zero</code></pre>
+</section>
+
+<!-- ================================================================== -->
+<section id="disturbance">
+  <div class="sec-head">
+    <h2>곡률 외란 B<sub>d</sub>와 정상상태</h2>
+  </div>
+
+  <p><b>B<sub>d</sub>는 B와 평행하지 않습니다.</b> 2행의 비는 −19.69/31.25 = −0.63, 4행의 비는 −5.65/35 = −0.16입니다. 외란이 입력과 같은 통로로 들어오면(matched, \(B_d = B c\)) 조향 하나로 외란을 정확히 지울 수 있지만, 여기서는 그렇지 않습니다. 그래서 곡선에서는 feedback만으로 오차가 0이 되지 않고, feedforward를 더해도 e<sub>ψ</sub>는 0이 되지 않습니다.</p>
+
+  <h3>곡률 → 오차 전달함수</h3>
+  <p>δ = −Kx를 넣은 폐루프는 \(\dot x = (\mA - \mB K)x + \mBd\dot\psi_{des}\)입니다. 곡률이 e<sub>y</sub>에 주는 영향은 다음과 같습니다.</p>
+  \[ T_{\dot\psi_{des}\to e_y}(s) = \begin{bmatrix}1&0&0&0\end{bmatrix}\big(sI - \mA + \mB K\big)^{-1}\mBd \]
+  <p>baseline 극점 {−2.5 ± 2.5i, −6, −8}에서 T(0) = −2.21 m/(rad/s)입니다. baseline 경로의 최대 \(\dot\psi_{des}\) = 0.0192 rad/s를 곱하면 약 −4.2 cm이고, 이는 Simulink에서 본 차선변경 중 지연 4.2 cm(<a href="baseline_reference.md">baseline_reference.md</a>)와 같습니다. 급한 경로(\(\dot\psi_{des,max}\) = 0.0765 rad/s)에서는 같은 계산으로 약 17 cm이지만, 곡률이 계속 변하므로 준정상 추정치일 뿐입니다. 극점을 더 왼쪽에 두면 |T(0)|가 작아집니다. 곡률이 \(|\dot\psi_{des}| \le \dot\psi_m\)으로 유계이면 남는 오차의 크기는 \(\lVert \mBd\,\dot\psi_m\rVert\)에 비례합니다.</p>
+
+  <h3>일정 곡률에서의 정상상태 (Ext 3)</h3>
+  <p>R이 일정하면 \(\dot\psi_{des} = V_x/R\)이 상수이고, 최종값 정리로 다음을 얻습니다.</p>
+  \[ x_{ss} = -(\mA - \mB K)^{-1}\left(\mB\,\delta_{ff} + \mBd\,\frac{V_x}{R}\right) \]
+  <p>e<sub>y,ss</sub> = 0이 되도록 δ<sub>ff</sub>를 고르면 정상상태 조향과 헤딩 오차는 다음과 같습니다.</p>
+  \[ \delta_{ss} = \frac{L}{R} + K_v\,a_y,\qquad a_y = \frac{V_x^2}{R},\qquad K_v = \frac{m}{L}\left(\frac{l_r}{C_f} - \frac{l_f}{C_r}\right) \]
+  \[ e_{\psi,ss} = -\frac{l_r}{R} + \frac{l_f}{C_r L}\,\frac{mV_x^2}{R} = -\beta_{ss} \]
+  \[ \delta_{ff} = \frac{mV_x^2}{RL}\left(\frac{l_r}{C_f} - \frac{l_f}{C_r} + \frac{l_f}{C_r}k_3\right) + \frac{1}{R}\big(L - l_r k_3\big) = \frac{L}{R} + K_v a_y + k_3\,e_{\psi,ss} \]
+  <ul>
+    <li>δ<sub>ss</sub>는 기하학적 Ackermann 각 L/R에 understeer 보정 K<sub>v</sub>a<sub>y</sub>를 더한 것입니다. understeer(K<sub>v</sub> &gt; 0)면 빠를수록 더 많이 조향해야 합니다.</li>
+    <li>δ<sub>ff</sub>의 마지막 항 \(k_3 e_{\psi,ss}\)는 feedback이 e<sub>ψ,ss</sub>에 반응해 내는 조향을 미리 빼 주는 부분입니다. 식은 제어기 쪽이지만 plant의 정상상태에서 바로 나오므로 여기 둡니다.</li>
+    <li>e<sub>ψ,ss</sub> ≠ 0: 곡선에서 차는 sideslip β<sub>ss</sub>를 가진 채 돌기 때문에 e<sub>y</sub> = 0이어도 헤딩이 경로 접선과 다릅니다(ψ<sub>des</sub> = ψ + β).</li>
+  </ul>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>경로</th><th class="num">κ<sub>max</sub> [1/m]</th><th class="num">R<sub>min</sub> [m]</th><th class="num">\(\dot\psi_{des,max}\) [rad/s]</th><th class="num">δ<sub>ss</sub> [°]</th><th class="num">e<sub>ψ,ss</sub> [°]</th></tr></thead>
+      <tbody>
+        <tr><td>baseline (X<sub>off</sub> 80, η 40)</td><td class="num">9.61e−4</td><td class="num">1041</td><td class="num">0.0192</td><td class="num">0.21</td><td class="num">0.24</td></tr>
+        <tr><td>sharp (X<sub>off</sub> 50, η 20)</td><td class="num">3.82e−3</td><td class="num">262</td><td class="num">0.0765</td><td class="num">0.84</td><td class="num">0.96</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>표의 값은 가장 휜 지점의 R이 계속 유지된다고 가정한 값입니다. S자 경로는 곡률이 계속 변하므로 실제 응답은 이 값 근처에서 동적으로 움직입니다.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="path">
+  <div class="sec-head">
+    <h2>경로 기하와 오차 계산 블록</h2>
+    <div class="src"><code>path_reference.m</code> · <code>path_tracking_errors.m</code></div>
+  </div>
+
+  \[ Y(X) = W_H\tanh\!\left(\frac{X - X_{off}}{\eta}\right) + W_H,\qquad W_H = 2\ \mathrm m,\quad (X_{off},\ \eta) = (80, 40)\ \text{baseline},\ (50, 20)\ \text{sharp} \]
+  <p>\(u = (X - X_{off})/\eta\)로 두면</p>
+  \[ Y' = \frac{W_H}{\eta}\operatorname{sech}^2 u,\qquad Y'' = -\frac{2W_H}{\eta^2}\operatorname{sech}^2 u\,\tanh u,\qquad
+     \psi_p = \tan^{-1}Y',\qquad \kappa = \frac{Y''}{(1 + Y'^2)^{3/2}} \]
+  <p>\(|\operatorname{sech}^2 u\tanh u|\)의 최댓값은 \(\tanh u = 1/\sqrt3\)에서 \(2/(3\sqrt3)\)이므로 \(|Y''|_{max} = 4W_H / (3\sqrt3\,\eta^2)\)입니다. η가 절반이 되면 곡률은 네 배가 됩니다(baseline → sharp).</p>
+
+  <p><b>Path Tracking Errors 블록이 계산하는 것.</b> 최근접점 \(X_p\)는 \((X - X_p)^2 + (Y - Y(X_p))^2\)을 Newton 반복으로 최소화해서 찾습니다(<code>path_closest_point.m</code>). 그다음 오차와 오차율을 선형화 없이 계산합니다.</p>
+  \[ e_y = -(X - X_p)\sin\psi_p + (Y - Y_p)\cos\psi_p,\qquad e_\psi = \psi - \psi_p\ \ (\text{wrap to } (-\pi, \pi]) \]
+  \[ \dot e_y = V_x\sin e_\psi + V_y\cos e_\psi,\qquad \dot s = \frac{V_x\cos e_\psi - V_y\sin e_\psi}{1 - \kappa e_y},\qquad \dot\psi_{des} = \kappa\,\dot s,\qquad \dot e_\psi = r - \dot\psi_{des} \]
+  <p>e<sub>ψ</sub>가 작고 |κe<sub>y</sub>| ≪ 1이면(여기서는 10⁻⁴ 수준) \(\dot s \approx V_x\), \(\dot\psi_{des} \approx V_x\kappa\), \(\dot e_y \approx V_y + V_x e_\psi\)가 되어 Step 4의 관계와 같아집니다.</p>
+  <p><b>초기 오차.</b> 차량은 (0, 0)에서 헤딩 0으로 출발하지만 Y(0) = 2 tanh(−2) + 2 = 0.072 m라서 baseline은 e<sub>y</sub>(0) ≈ −7.2 cm, e<sub>ψ</sub>(0) ≈ −0.2°에서 시작합니다.</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="plant">
+  <div class="sec-head">
+    <h2>실제 plant와 설계 모델의 차이</h2>
+    <div class="src"><code>vehicle_body_3dof.m</code>, <code>vdb_block_params.m</code></div>
+  </div>
+
+  <p>Simulink의 Vehicle Body 3DOF Single Track 블록(V<sub>x</sub> 외부 입력 모드)은 다음 비선형 식을 풉니다. <code>vehicle_body_3dof.m</code>이 같은 식을 MATLAB으로 다시 구현한 것입니다.</p>
+  \[ \alpha_f = \delta - \operatorname{atan2}(V_y + l_f r,\ V_x),\qquad \alpha_r = -\operatorname{atan2}(V_y - l_r r,\ V_x) \]
+  \[ m(\dot V_y + V_x r) = F_{yf}\cos\delta + F_{yr},\qquad I_z\dot r = l_f F_{yf}\cos\delta - l_r F_{yr},\qquad F_{y,axle} = C_y\,\alpha\,\frac{F_{z,axle}}{F_{z,nom}} \]
+  <p>Vehicle Global Coordinate 블록은 body 속도를 global 좌표로 돌려 적분합니다.</p>
+  \[ \dot X = V_x\cos\psi - V_y\sin\psi,\qquad \dot Y = V_x\sin\psi + V_y\cos\psi,\qquad \dot\psi = r \]
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>항목</th><th>설계 모델</th><th>Simulink plant</th><th>영향</th></tr></thead>
+      <tbody>
+        <tr><td>slip angle</td><td>\((V_y + l_f r)/V_x\)</td><td>atan2</td><td>이 시뮬레이션의 작은 각에서는 무시할 수 있음</td></tr>
+        <tr><td>cos δ</td><td>1</td><td>cos δ</td><td>δ = 1.7°에서 0.04 %</td></tr>
+        <tr><td>타이어 stiffness</td><td>C<sub>f</sub>, C<sub>r</sub> 고정</td><td>\(C_y F_z/F_{z,nom}\) (하중 비례)</td><td><code>'match_design'</code>이면 일치. <code>'raw'</code>(C<sub>y</sub> = 50 kN/rad, F<sub>z,nom</sub> = 5000 N)는 유효 84 / 73 kN/rad → 거의 neutral steer, yaw 이득 +30 %</td></tr>
+        <tr><td>하중 이동</td><td>없음</td><td>aero 계수 (<code>'raw'</code>에서 기본값)</td><td><code>'match_design'</code>은 aero 계수를 0으로 둠</td></tr>
+        <tr><td>타이어 지연</td><td>없음</td><td>relaxation length 0.1 m (5 ms)</td><td>e<sub>y</sub> 영향 0.2 mm 미만</td></tr>
+        <tr><td>타이어 비선형</td><td>선형</td><td>선형 (블록 기본 설정)</td><td>Mapped Corner Stiffness를 켜면 큰 slip에서 C가 줄어듦</td></tr>
+        <tr><td>곡률</td><td>ψ̈<sub>des</sub> ≈ 0, \(\dot\psi_{des} = V_x\kappa\)</td><td>κ가 경로를 따라 연속 변화, \(\dot\psi_{des} = \kappa\dot s\)</td><td>외란 모델 오차(작음)</td></tr>
+        <tr><td>오차 kinematics</td><td>선형</td><td>정확한 Frenet 식</td><td>e<sub>ψ</sub> &lt; 1°라 무시할 수 있음</td></tr>
+        <tr><td>V<sub>x</sub></td><td>상수</td><td>상수 20 m/s 입력</td><td>같음</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>블록의 stiffness 규약 때문에 설계값 50 kN/rad를 블록에 그대로 넣으면 설계 모델과 다른 차가 됩니다. 이 저장소는 기본으로 \(C_y = C\,F_{z,nom}/F_{z}\)를 넣어 유효 stiffness를 C<sub>f</sub>, C<sub>r</sub>에 맞춥니다(<code>vdb_block_params.m</code>). 1° step 조향에서 블록과 선형 모델은 0.3 % 안에서 일치합니다(<code>tests/run_tests.m</code> check 5a).</p>
+</section>
+
+<!-- ================================================================== -->
+<section id="code">
+  <div class="sec-head">
+    <h2>수식과 코드 대응</h2>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>수식</th><th>파일</th></tr></thead>
+      <tbody>
+        <tr><td>A, B, B<sub>d</sub>, C, D (Step 5, 출력식)</td><td><code>src/error_model_linear.m</code></td></tr>
+        <tr><td>비선형 plant: slip angle, 타이어 힘, \(\dot V_y\), \(\dot r\), a<sub>y</sub></td><td><code>src/vehicle_body_3dof.m</code></td></tr>
+        <tr><td>\(\dot X,\ \dot Y\)</td><td><code>src/global_coordinate.m</code></td></tr>
+        <tr><td>Y(X), ψ<sub>p</sub>, κ</td><td><code>src/path_reference.m</code></td></tr>
+        <tr><td>최근접점</td><td><code>src/path_closest_point.m</code></td></tr>
+        <tr><td>e<sub>y</sub>, \(\dot e_y\), e<sub>ψ</sub>, \(\dot e_\psi\), \(\dot\psi_{des}\)</td><td><code>src/path_tracking_errors.m</code></td></tr>
+        <tr><td>블록 stiffness 규약, 축하중</td><td><code>src/vdb_block_params.m</code></td></tr>
+        <tr><td>파라미터, scenario</td><td><code>src/load_params.m</code></td></tr>
+        <tr><td>폐루프 한 번 계산 (블록 연결 순서)</td><td><code>src/closed_loop_rhs.m</code></td></tr>
+        <tr><td>선형 모델 vs 비선형 식 Jacobian 확인</td><td><code>tests/run_tests.m</code> check 3</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================================================================== -->
+<section id="calc">
+  <div class="sec-head">
+    <h2>V<sub>x</sub>·stiffness 바꿔 보기</h2>
+    <div class="src">Step 3·5의 식을 그대로 계산 · 처음 값은 baseline 파라미터</div>
+  </div>
+  <p>A는 1/V<sub>x</sub>에 따라, B<sub>d</sub>는 V<sub>x</sub>에 따라 바뀌고 B는 그대로입니다. C<sub>r</sub>을 C<sub>f</sub>l<sub>f</sub>/l<sub>r</sub> = 43 750 아래로 낮추면 oversteer가 되어 임계 속도가 생깁니다.</p>
+
+  <div class="calc" id="calcbox">
+    <div class="inputs">
+      <div class="vx">
+        <label for="in-vx-range"><span><b>V<sub>x</sub></b> 종방향 속도 [m/s]</span>
+          <input type="range" id="in-vx-range" min="5" max="45" step="0.5" value="20">
+        </label>
+        <label for="in-vx"><span>값</span><input type="number" id="in-vx" min="1" max="80" step="0.5" value="20"></label>
+      </div>
+      <label for="in-cf"><span><b>C<sub>f</sub></b> [N/rad]</span><input type="number" id="in-cf" step="1000" value="50000"></label>
+      <label for="in-cr"><span><b>C<sub>r</sub></b> [N/rad]</span><input type="number" id="in-cr" step="1000" value="50000"></label>
+      <label for="in-m"><span><b>m</b> [kg]</span><input type="number" id="in-m" step="10" value="1600"></label>
+      <label for="in-iz"><span><b>I<sub>z</sub></b> [kg·m²]</span><input type="number" id="in-iz" step="10" value="2000"></label>
+      <label for="in-lf"><span><b>l<sub>f</sub></b> [m]</span><input type="number" id="in-lf" step="0.05" value="1.4"></label>
+      <label for="in-lr"><span><b>l<sub>r</sub></b> [m]</span><input type="number" id="in-lr" step="0.05" value="1.6"></label>
+    </div>
+    <div class="bar">
+      <button type="button" id="btn-reset">baseline 값으로 되돌리기</button>
+      <span class="chip" id="out-steer">understeer</span>
+      <span class="chip" id="out-stab">안정</span>
+    </div>
+    <div class="out">
+      <div>
+        <div class="mat-h"><span class="tA">A</span></div>
+        <div class="mat" id="out-A"></div>
+      </div>
+      <div>
+        <div class="mat-h"><span class="tB">B</span> · <span class="tBd">B<sub>d</sub></span></div>
+        <div class="mat" id="out-B"></div>
+      </div>
+      <div>
+        <div class="mat-h">고유값 · 전달함수 δ → r</div>
+        <dl id="out-dl"></dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  수치는 <code>error_model_linear</code>, <code>ctrb</code>, <code>obsv</code>, <code>tf</code>, <code>damp</code>로 MATLAB R2026a에서 확인했습니다. 설계 절차(극점 선택, LQR 가중치, observer 이득, 식별 알고리즘)는 이 문서의 범위 밖입니다.
+</footer>
+
+<script>
+document.documentElement.lang = 'ko';
+window.MathJax = {
+  loader: { load: ['[tex]/html'] },
+  tex: {
+    packages: { '[+]': ['html'] },
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['\\[', '\\]']],
+    macros: {
+      mA: '\\class{mA}{A}',
+      mB: '\\class{mB}{B}',
+      mBd: '\\class{mBd}{B_d}',
+      mC: '\\class{mC}{C}',
+      mD: '\\class{mD}{D}'
+    }
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js" async></script>
+<script>
+(function () {
+  var DEF = { vx: 20, cf: 50000, cr: 50000, m: 1600, iz: 2000, lf: 1.4, lr: 1.6 };
+  var ids = { vx: 'in-vx', cf: 'in-cf', cr: 'in-cr', m: 'in-m', iz: 'in-iz', lf: 'in-lf', lr: 'in-lr' };
+  var range = document.getElementById('in-vx-range');
+
+  function val(k) {
+    var v = parseFloat(document.getElementById(ids[k]).value);
+    return isFinite(v) ? v : DEF[k];
+  }
+  function f(x) {
+    if (x === 0) return '0';
+    var a = Math.abs(x);
+    if (a >= 1e5 || a < 1e-3) return x.toExponential(3);
+    return parseFloat(x.toPrecision(5)).toString();
+  }
+  function pad(s, n) { while (s.length < n) s = ' ' + s; return s; }
+  function matText(rows) {
+    var w = 0;
+    rows.forEach(function (r) { r.forEach(function (c) { w = Math.max(w, c.length); }); });
+    return rows.map(function (r) { return '[ ' + r.map(function (c) { return pad(c, w); }).join('  ') + ' ]'; }).join('\n');
+  }
+
+  function update() {
+    var Vx = val('vx'), Cf = val('cf'), Cr = val('cr'), m = val('m'), Iz = val('iz'), lf = val('lf'), lr = val('lr');
+    if (Vx <= 0 || m <= 0 || Iz <= 0) return;
+    var L = lf + lr;
+    var a22 = -(Cf + Cr) / (m * Vx), a23 = (Cf + Cr) / m, a24 = (-Cf * lf + Cr * lr) / (m * Vx);
+    var a42 = -(Cf * lf - Cr * lr) / (Iz * Vx), a43 = (Cf * lf - Cr * lr) / Iz, a44 = -(Cf * lf * lf + Cr * lr * lr) / (Iz * Vx);
+    var b2 = Cf / m, b4 = Cf * lf / Iz, d2 = a24 - Vx, d4 = a44;
+
+    document.getElementById('out-A').textContent = matText([
+      ['0', '1', '0', '0'],
+      ['0', f(a22), f(a23), f(a24)],
+      ['0', '0', '0', '1'],
+      ['0', f(a42), f(a43), f(a44)]
+    ]);
+    document.getElementById('out-B').textContent = 'B   = ' + matText([['0', f(b2), '0', f(b4)]]) + 'ᵀ\nB_d = ' + matText([['0', f(d2), '0', f(d4)]]) + 'ᵀ';
+
+    var p1 = -(a22 + a44), p0 = a22 * a44 - a24 * a42 - a43;
+    var disc = p1 * p1 - 4 * p0, eig;
+    if (disc < 0) {
+      eig = f(-p1 / 2) + ' ± ' + f(Math.sqrt(-disc) / 2) + 'i';
+    } else {
+      eig = f((-p1 + Math.sqrt(disc)) / 2) + ', ' + f((-p1 - Math.sqrt(disc)) / 2);
+    }
+    var Kv = m / L * (lr / Cf - lf / Cr);
+    var Ks = Cf * lf / Iz, Tz = m * Vx * lf / (Cr * L);
+    var rows = [
+      ['고유값', '0, 0, ' + eig],
+      ['ω_n [rad/s]', p0 > 0 ? f(Math.sqrt(p0)) : '—'],
+      ['ζ', p0 > 0 ? f(p1 / (2 * Math.sqrt(p0))) : '—'],
+      ['K_s [1/s²]', f(Ks)],
+      ['T_z [s]', f(Tz)],
+      ['G(0) = r/δ [1/s]', p0 > 0 ? f(Vx / (L + Kv * Vx * Vx)) : '—'],
+      ['K_v [rad/(m/s²)]', f(Kv)]
+    ];
+    if (Kv < 0) rows.push(['임계 속도 [m/s]', f(Math.sqrt(-L / Kv))]);
+    var dl = document.getElementById('out-dl');
+    dl.innerHTML = '';
+    rows.forEach(function (r) {
+      var dt = document.createElement('dt'); dt.textContent = r[0];
+      var dd = document.createElement('dd'); dd.textContent = r[1];
+      dl.appendChild(dt); dl.appendChild(dd);
+    });
+
+    var steer = document.getElementById('out-steer');
+    if (Math.abs(Kv) < 1e-9) { steer.textContent = 'neutral steer'; steer.className = 'chip'; }
+    else if (Kv > 0) { steer.textContent = 'understeer'; steer.className = 'chip'; }
+    else { steer.textContent = 'oversteer'; steer.className = 'chip bad'; }
+    var stab = document.getElementById('out-stab');
+    var stable = p0 > 0 && p1 > 0;
+    stab.textContent = stable ? '차량 모드 안정' : '차량 모드 불안정';
+    stab.className = stable ? 'chip' : 'chip bad';
+  }
+
+  range.addEventListener('input', function () { document.getElementById('in-vx').value = range.value; update(); });
+  document.getElementById('in-vx').addEventListener('input', function () {
+    var v = parseFloat(this.value);
+    if (isFinite(v)) range.value = Math.min(45, Math.max(5, v));
+    update();
+  });
+  ['cf', 'cr', 'm', 'iz', 'lf', 'lr'].forEach(function (k) {
+    document.getElementById(ids[k]).addEventListener('input', update);
+  });
+  document.getElementById('btn-reset').addEventListener('click', function () {
+    Object.keys(DEF).forEach(function (k) { document.getElementById(ids[k]).value = DEF[k]; });
+    range.value = DEF.vx;
+    update();
+  });
+  update();
+})();
+</script>
