@@ -1,8 +1,8 @@
 function ctrl = init_model_workspace(design_file, block_mode, scenario)
 %INIT_MODEL_WORKSPACE  Put everything the Simulink model needs in the base workspace.
 %
-%   ctrl = init_model_workspace()                        design from results/baseline_design.mat
-%   ctrl = init_model_workspace(design_file)             (if it exists, else default pole placement)
+%   ctrl = init_model_workspace()                        pole placement at default_poles()
+%   ctrl = init_model_workspace(design_file)             ctrl saved in design_file (if it exists)
 %   ctrl = init_model_workspace(design_file, block_mode) block_mode: 'match_design' | 'raw'
 %                                                        (see vdb_block_params)
 %   ctrl = init_model_workspace(design_file, block_mode, scenario)
@@ -12,12 +12,10 @@ function ctrl = init_model_workspace(design_file, block_mode, scenario)
 %
 %   Variables created: veh, pth, pth_vec, Vx, delta_max, K, ctrl, sim_opt, blk.
 %   Called by the model's PreLoadFcn callback and by run_baseline / tests.
+%   Note: the model's InitFcn resets K = default_gain(veh) at every run; to
+%   simulate another gain, pass it with Simulink.SimulationInput/setVariable.
 
-src  = fileparts(mfilename('fullpath'));
-proj = fileparts(src);
-if nargin < 1 || isempty(design_file)
-    design_file = fullfile(proj, 'results', 'baseline_design.mat');
-end
+if nargin < 1, design_file = []; end
 if nargin < 3 || isempty(scenario)
     scenario = 'baseline';
     if evalin('base', 'exist(''scenario'', ''var'')')
@@ -29,7 +27,7 @@ end
 if nargin >= 2 && ~isempty(block_mode), veh.block_mode = block_mode; end
 blk = vdb_block_params(veh);
 
-if exist(design_file, 'file')
+if ~isempty(design_file) && exist(design_file, 'file')
     S = load(design_file, 'ctrl');
     ctrl = S.ctrl;
 else

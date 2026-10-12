@@ -63,7 +63,7 @@ fid = fopen(fullfile(res, 'design_sweep.txt'), 'w');
 print_metrics_table(names, mets, fid); fclose(fid);
 plot_comparison(logs_rk4, names, res, 'design_sweep', 'Design sweep (MATLAB RK4 simulation)', vis);
 
-%% 4. save the design (read by the Simulink model's PreLoadFcn) ----------------
+%% 4. save the design (for reference; the model's InitFcn recomputes K) --------
 design_file = fullfile(res, 'baseline_design.mat');
 save(design_file, 'ctrl', 'ctrl_lqr', 'veh', 'pth', 'sim_opt', 'A', 'B', 'Bd', 'C');
 
@@ -82,10 +82,11 @@ fprintf('  -> effective stiffness at static axle loads (%.0f / %.0f N): Cf = %.0
 out_place = sim(mdl, 'StopTime', num2str(sim_opt.Tend));
 log_place = simulink_log_to_struct(out_place);
 
-assignin('base', 'K', ctrl_lqr.K);                       % same model, LQR gain
-out_lqr = sim(mdl, 'StopTime', num2str(sim_opt.Tend));
+in_lqr  = Simulink.SimulationInput(mdl);                 % same model, LQR gain: setVariable
+in_lqr  = in_lqr.setVariable('K', ctrl_lqr.K);           % overrides the InitFcn (K from default_poles)
+in_lqr  = in_lqr.setModelParameter('StopTime', num2str(sim_opt.Tend));
+out_lqr = sim(in_lqr);
 log_lqr = simulink_log_to_struct(out_lqr);
-assignin('base', 'K', ctrl.K);
 
 % robustness check: Cf, Cr typed directly into the block (default Fznom, aero on)
 init_model_workspace(design_file, 'raw');

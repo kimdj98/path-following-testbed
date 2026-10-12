@@ -23,7 +23,11 @@ function mdl_file = build_simulink_model(mdl)
 %   parameters reference base-workspace variables created by
 %   init_model_workspace (veh, blk, pth_vec, Vx, K, delta_max, Ts_mon,
 %   xy_monitor_on); the model's PreLoadFcn callback creates them when the
-%   model opens.
+%   model opens.  The InitFcn callback recomputes K = default_gain(veh) at
+%   the start of every run, so editing src/default_poles.m changes the
+%   controller without reopening the model; scripts that simulate another
+%   gain pass it with Simulink.SimulationInput/setVariable, which takes
+%   precedence over the InitFcn.
 %
 %   Requires: Simulink, Control System Toolbox, Vehicle Dynamics Blockset.
 
@@ -46,6 +50,7 @@ set_param(mdl, 'Solver', 'ode4', 'FixedStep', '1e-3', 'StopTime', '15', ...
                'SignalLoggingSaveFormat', 'Dataset');
 set_param(mdl, 'PreLoadFcn', sprintf(['addpath(fullfile(fileparts(which(''%s'')), ''src''));' ...
                                       ' init_model_workspace;'], mdl));
+set_param(mdl, 'InitFcn', 'K = default_gain(veh);');      % gain from src/default_poles.m at every run
 set_param(mdl, 'Description', ['Baseline project: vehicle path-following control of an ' ...
         'S-shaped lane change with full-state feedback (Vehicle Body 3DOF Single Track plant).']);
 

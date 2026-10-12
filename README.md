@@ -59,6 +59,12 @@ ctrl = design_state_feedback(A, B, 'place', struct('poles', p));    % your poles
 ctrl = design_state_feedback(A, B, 'lqr', struct('Q', Q, 'R', R));  % or LQR
 ```
 
+To run the Simulink model directly with other poles, edit the poles in
+`src/default_poles.m` and press Run: the model's InitFcn recomputes `K` from
+them at every run. To simulate another gain from a script, pass it with
+`Simulink.SimulationInput` (`setVariable('K', K)`); a plain `K` in the base
+workspace is overwritten by the InitFcn.
+
 ### 2. Change the scenario
 
 | `scenario` | Path | Used in |

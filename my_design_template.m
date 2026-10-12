@@ -23,7 +23,8 @@ tag      = 'my_design';         % results are written to results/<tag>/
 
 %% 2. your controller -------------------------------------------------- EDIT
 % (a) state feedback  delta = -K x : set ctrl.K (your own poles, LQR weights, ...)
-ctrl = design_state_feedback(A, B, 'place', struct('poles', [-2.5+2.5i, -2.5-2.5i, -6, -8]));
+% ctrl = design_state_feedback(A, B, 'place', struct('poles', [-2.5+2.5i, -2.5-2.5i, -6, -8]));
+ctrl = design_state_feedback(A, B, 'place', struct('poles', [-1.5+1.5i, -1.5-1.5i, -4, -5]));
 ctrl.name = 'my design';
 
 % (b) any other control law  delta = law(e, aux)  (pure-MATLAB simulation only;
@@ -50,10 +51,14 @@ if run_simulink
     mdl = 'path_following_baseline';
     if ~exist(fullfile(proj, [mdl '.slx']), 'file'), build_simulink_model(mdl); end
     xy_monitor_on = 0;                      % 1: watch the live X-Y figure (slower)
-    init_model_workspace([], 'match_design', scenario);
-    assignin('base', 'K', ctrl.K);
+    my_ctrl = ctrl;                         % opening the model and init_model_workspace reset ctrl
     load_system(mdl);
-    out = sim(mdl, 'StopTime', num2str(sim_opt.Tend));
+    init_model_workspace([], 'match_design', scenario);
+    ctrl = my_ctrl;
+    in  = Simulink.SimulationInput(mdl);
+    in  = in.setVariable('K', ctrl.K);      % overrides the model's InitFcn (K from default_poles)
+    in  = in.setModelParameter('StopTime', num2str(sim_opt.Tend));
+    out = sim(in);
     log_final = simulink_log_to_struct(out);
     source = 'Simulink';
 else

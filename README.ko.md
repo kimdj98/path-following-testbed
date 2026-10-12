@@ -59,6 +59,12 @@ ctrl = design_state_feedback(A, B, 'place', struct('poles', p));    % 내가 고
 ctrl = design_state_feedback(A, B, 'lqr', struct('Q', Q, 'R', R));  % 또는 LQR
 ```
 
+Simulink 모델을 직접 열어 다른 극점으로 돌려보려면 `src/default_poles.m`의
+극점을 고치고 Run하면 됩니다. 모델의 InitFcn이 Run할 때마다 그 극점으로
+`K`를 다시 계산합니다. 스크립트에서 다른 게인으로 돌릴 때는
+`Simulink.SimulationInput`의 `setVariable('K', K)`로 넘기세요. workspace의
+`K`를 직접 바꾸면 InitFcn이 덮어씁니다.
+
 ### 2. Scenario 바꾸기
 
 | `scenario` | 경로 | 사용처 |

@@ -104,6 +104,10 @@ State Feedback Controller ──WhlAngF──► Nonlinear Vehicle Body 3DOF Mod
   variables the blocks need (`veh`, `blk`, `pth_vec`, `Vx`, `K`,
   `delta_max`, `Ts_mon`, `xy_monitor_on`). The path is taken from the
   base-workspace variable `scenario` if it exists (default `'baseline'`).
+  The model's `InitFcn` (`K = default_gain(veh)`) recomputes the gain from
+  `src/default_poles.m` at the start of every run; scripts that simulate
+  another gain (the LQR run in `run_baseline`, `my_design_template`) pass it
+  with `Simulink.SimulationInput`/`setVariable`, which takes precedence.
 * **Logging.** Solver `ode4`, fixed step 1 ms, 15 s. Signals are recorded
   with signal logging (the antenna badges on `WhlAngF`, `ydot`, `psi`, `r`,
   `X_glob`, `Y_glob`, `y_e`, `y_e_dot`, `psi_e`, `psi_e_dot`, `path_info`,
